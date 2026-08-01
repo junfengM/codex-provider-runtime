@@ -75,6 +75,11 @@ cd codex-provider-runtime
 ./bin/codex-provider doctor --live
 ```
 
+如果手机 Remote 已显示 DeepSeek 的“最高”推理强度，但 Desktop 只显示“轻度”和“高”，
+请在 Desktop 的“设置 → 配置/组态 → 模型功能 → 可用推理强度”中勾选 `Max`。Desktop
+会把模型声明的 `low`/`high`/`max` 与本机启用的推理强度取交集；这个显示偏好目前不与
+手机端同步，也不属于 Provider 路由故障。修改后重新打开模型菜单即可，通常无需重启。
+
 可选安装全局命令和 Codex skills：
 
 ```bash
