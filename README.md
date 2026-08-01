@@ -4,8 +4,9 @@ Codex Provider Runtime 是一个 macOS 本地运行时扩展。它让 Codex Desk
 在新建 `deepseek-*` 对话时使用 DeepSeek provider，同时保留 ChatGPT 登录、GPT 模型和
 OpenAI provider。
 
-当前版本聚焦 DeepSeek V4 Flash/Pro。它不修改或重新签名 `ChatGPT.app`，不代理提示词与
-响应，不重写历史会话 provider，也不支持在同一旧对话中跨 provider 切换。
+当前版本聚焦 DeepSeek V4 Flash/Pro。它不修改或重新签名 `ChatGPT.app`，不重写历史会话
+provider，也不支持在同一旧对话中跨 provider 切换。DeepSeek 请求会经过只绑定
+`127.0.0.1` 的本机协议网关，在 Codex Responses 与 DeepSeek Chat Completions 之间转换。
 
 ## 工程形态
 
@@ -15,8 +16,8 @@ OpenAI provider。
 codex-provider-runtime/
 ├── bin/codex-provider       # 统一生命周期 CLI
 ├── config/coexist.sh        # ChatGPT/DeepSeek 配置与模型目录管理
-├── runtime/                 # 精确版本构建器、原生补丁和稳定启动器
-├── tests/                   # CLI、补丁和升级不变量测试
+├── runtime/                 # 版本构建器、原生补丁、启动器和 DeepSeek 协议网关
+├── tests/                   # CLI、补丁、网关协议和升级不变量测试
 ├── docs/                    # 架构、运维和协议边界
 └── integrations/codex-skill # 可选的 Codex 操作入口
 ```
@@ -38,6 +39,16 @@ deepseek-* + provider 缺失/openai  → deepseek
 GPT 模型                          → 保持 OpenAI
 显式第三方 provider               → 保持调用方选择
 旧线程/turn/start                 → 不修改
+```
+
+路由完成后，DeepSeek provider 的 Responses 请求进入本机网关：
+
+```text
+Codex Responses request
+  → messages/reasoning/tools 转为 DeepSeek Chat Completions
+  → DeepSeek reasoning_content/tool_calls/content 流
+  → Codex Responses SSE items
+  → Codex 执行工具并把结果送入下一轮
 ```
 
 ## 快速开始
@@ -76,6 +87,8 @@ codex-provider doctor
 codex-provider doctor --live
 codex-provider update
 codex-provider verify
+codex-provider test-deepseek
+codex-provider appserver-smoke
 codex-provider history deepseek
 codex-provider logs 200
 codex-provider disable
@@ -86,7 +99,10 @@ codex-provider uninstall
 - `disable`：保留安装与凭据，下一次启动回退官方后端；
 - `enable`：解除禁用标记，但仍要求版本完全匹配；
 - `uninstall`：卸载 LaunchAgent 和环境入口，保留 releases、配置与 Keychain；
-- `doctor --live`：除本地协议检查外，再发起一次临时 DeepSeek 请求。
+- `test-deepseek`：本地 CLI 真实结构化工具调用闭环；
+- `appserver-smoke`：使用手机 Remote 相同的 app-server 公共协议，执行隐藏 SHA-256
+  挑战并验证本机 `commandExecution`；
+- `doctor --live`：组合结构检查与一次临时 DeepSeek 请求。
 
 ## 安全升级模型
 
@@ -105,7 +121,8 @@ codex-provider uninstall
 1. Desktop GPT 新对话记录 `model_provider = openai`；
 2. Desktop DeepSeek 新对话记录 `model = deepseek-v4-*` 和
    `model_provider = deepseek`；
-3. 手机 Remote DeepSeek 新对话具有相同元数据并产生完成/token 事件；
+3. `appserver-smoke` 记录 `model_provider = deepseek`，产生真实 `commandExecution`，隐藏
+   SHA-256 挑战与最终消息匹配；
 4. 没有认证、unsupported model、fallback 或旧 JavaScript router 错误；
 5. 实际 app-server 来自当前版本匹配的 `current/codex`。
 
@@ -118,4 +135,5 @@ make check
 测试与 secret scan 必须在提交前通过。仓库不应包含 `~/.codex` 配置、API Key、会话、
 模型缓存、LaunchAgent plist、构建缓存或编译后的 Codex 二进制。
 
-详细设计见 [架构说明](docs/architecture.md) 和 [运维手册](docs/operations.md)。
+详细设计见 [架构说明](docs/architecture.md)、[兼容矩阵](docs/compatibility.md) 和
+[运维手册](docs/operations.md)。

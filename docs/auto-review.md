@@ -1,6 +1,6 @@
 # Auto-review 与自定义 provider 的兼容问题
 
-状态：已知兼容性边界；运行时必须依据当前 Codex 版本重新验证。
+状态：已在本机协议网关实现；运行时必须依据当前 Codex 版本重新验证。
 
 ## 现象
 
@@ -28,7 +28,16 @@ The supported API model names are deepseek-v4-pro or deepseek-v4-flash, but you 
 - 只在 provider 为 `deepseek` 的会话触发；OpenAI/GPT 会话的 reviewer 走 OpenAI，正常。
 - 这不是审批策略的拒绝，而是评审模型路由不兼容导致的启动失败。
 
-## 方案 A：改回手动审批
+## 当前实现
+
+DeepSeek provider 指向本机 Responses 兼容网关。网关检测内部模型名
+`codex-auto-review`，只在该 DeepSeek provider 边界将上游 Chat Completions 模型映射为
+`deepseek-v4-pro`。Codex 侧仍保留 reviewer 会话身份、审批协议和结果处理。
+
+这意味着审批判断由 DeepSeek V4 Pro 完成，不等同于官方 GPT reviewer。若不接受这一
+信任边界，使用下面的手动审批方案。
+
+## 回退：改回手动审批
 
 ```toml
 approvals_reviewer = "user"
@@ -37,19 +46,6 @@ approvals_reviewer = "user"
 写入 `~/.codex/config.toml` 后完全退出并重开 Codex。审批请求直接弹给用户手动确认。
 只有在用户明确接受手动审批时才修改此设置。
 
-## 方案 B：本地模型名映射代理（设计，未实现）
-
-让评审模型能在 DeepSeek provider 上运行：
-
-1. 本地起一个 OpenAI 兼容代理，把 `[model_providers.deepseek].base_url` 指向它；
-2. 代理把请求体中的 `model = "codex-auto-review"` 改写为 `deepseek-v4-pro`，其余原样转发到 `https://api.deepseek.com/`；
-3. 保持 `approvals_reviewer = "auto_review"`。
-
-代价与风险：
-
-- 评审判断由 DeepSeek 模型完成，不再是官方 GPT 评审；
-- 需要常驻本地进程（如 LaunchAgent），多一个故障点；
-- 属于非官方集成，App/协议更新后需要重新验证；
-- 代理需要隐藏转发用的 API Key，不能写入开源仓库。
-
-验证方式：改回 `auto_review` 后，在 DeepSeek 会话中发起一次需要审批的命令，确认 reviewer 日志不再出现 `invalid_request_error`。
+验证方式：保持 `auto_review`，在 DeepSeek 会话中发起一次需要审批的低风险命令，确认
+reviewer 日志不再出现 unsupported model 或 `invalid_request_error`。网关日志不会记录审批
+内容或 bearer header。

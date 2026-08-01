@@ -82,8 +82,10 @@ A complete validation has three separate checks:
 
 1. `codex debug models` contains both `gpt-*` and `deepseek-*`.
 2. ChatGPT login is still configured and forced API-only auth is absent.
-3. An ephemeral request with `model_provider="deepseek"` returns
-   `DEEPSEEK_ROUTE_OK`.
+3. An ephemeral CLI request executes a real shell tool and returns
+   `CODEX_DEEPSEEK_TOOL_OK`.
+4. The app-server Remote-equivalent smoke executes a hidden SHA-256 challenge
+   and produces `commandExecution` plus a matching final message.
 
 Network reachability warnings from `codex doctor` are reported separately and
 do not invalidate a structurally correct catalog.
@@ -132,3 +134,7 @@ does not alter `turn/start`, so it is not same-thread switching. See
   after Desktop or app-server protocol updates.
 - DeepSeek model capabilities and identifiers can change. Revalidate after
   updating the Codex app or DeepSeek integration.
+- DeepSeek V4 is configured as text-only. Image/audio input is rejected with a
+  clear modality error instead of being silently discarded.
+- DeepSeek accepts at most 128 functions. The gateway fails explicitly when
+  the expanded Codex/MCP tool set exceeds that upstream limit.

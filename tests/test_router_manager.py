@@ -109,8 +109,17 @@ class SupportMetadataTests(unittest.TestCase):
             Path("/Applications/ChatGPT.app/Contents/Resources/codex"),
             Path("/tmp/provider-runtime"),
         )
+        gateway = router_manager.plist_gateway(
+            Path("/tmp/deepseek_gateway.py"), Path("/tmp/provider-runtime")
+        )
         self.assertEqual(environment["Label"], "com.codex.provider-runtime.environment")
         self.assertEqual(updater["Label"], "com.codex.provider-runtime.updater")
+        self.assertEqual(
+            gateway["Label"], "com.codex.provider-runtime.deepseek-gateway"
+        )
+        self.assertEqual(gateway["ProgramArguments"][5], str(router_manager.GATEWAY_PORT))
+        self.assertEqual(gateway["ProgramArguments"][7], router_manager.DEEPSEEK_UPSTREAM)
+        self.assertTrue(gateway["KeepAlive"])
         self.assertIn("/tmp/provider-runtime", updater["ProgramArguments"])
 
     def test_legacy_agent_names_cover_previous_installations(self) -> None:
