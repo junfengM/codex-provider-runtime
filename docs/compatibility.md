@@ -8,7 +8,7 @@ Desktop or a new phone Remote thread.
 | New-thread provider routing | Supported | Only `deepseek-v4-flash` becomes provider `deepseek` in shared `thread/start`. |
 | Cross-provider history visibility | Supported | Omitted/null/empty `modelProviders` lists all interactive providers; explicit filters remain exact. |
 | Text and streaming output | Supported | Direct DeepSeek native Responses SSE. |
-| Thinking mode | Supported | Official catalog exposes `low`/`high`/`max`. |
+| Thinking mode | Supported | Official catalog exposes `low`/`high`/`max`; Desktop requires `Max` in Settings → Configuration → Model features → Available reasoning efforts. |
 | Standard function/shell tools | Supported | Native Responses items are dispatched by Codex without translation. |
 | Namespace/MCP tools | Supported by Codex | Client-side tools remain owned by Codex and its MCP runtime. |
 | Freeform tools (`apply_patch`) | Supported | Official catalog uses `apply_patch_tool_type = freeform`. |
@@ -41,6 +41,12 @@ Responses, 1,048,576-token context, `low`/`high`/`max` effort, normal
 `shell_command` tools, parallel calls, freeform apply-patch, and non-lite
 Responses. V4 Pro is intentionally excluded until DeepSeek documents native
 Responses support for it and live acceptance passes.
+
+Codex Desktop independently filters the reasoning levels shown in its model picker.
+Its default enabled-level set can omit `max`, so a provider that advertises only
+`low`/`high`/`max` may appear as `low`/`high` on Desktop while phone Remote still
+shows `max`. Enable `Max` under Settings → Configuration → Model features →
+Available reasoning efforts; no runtime patch or app rebuild is required.
 
 - https://api-docs.deepseek.com/quick_start/agent_integrations/codex/
 - https://api-docs.deepseek.com/guides/responses_api/
