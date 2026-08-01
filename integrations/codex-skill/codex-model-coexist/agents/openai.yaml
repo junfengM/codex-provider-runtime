@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Model Coexist"
+  short_description: "演进、维护并验证 Codex 多 Provider 共存与远程路由"
+  default_prompt: "Use $codex-model-coexist to reconcile current official capabilities, evolve the runtime safely, and verify ChatGPT–DeepSeek coexistence end to end."
