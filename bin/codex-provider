@@ -37,6 +37,7 @@ Usage:
   codex-provider doctor [--live]     Validate config, routing, and optional API call
   codex-provider update              Reconcile a release for the bundled Codex
   codex-provider verify              Run local config and protocol checks
+  codex-provider appserver-smoke     Test the Remote/app-server DeepSeek tool path
   codex-provider enable              Enable a verified version-matched release
   codex-provider disable             Fall back to the official bundled backend
   codex-provider uninstall           Unload support jobs; preserve state and secrets
@@ -150,6 +151,11 @@ case "${1:-help}" in
         bash "$config_tool" validate
         manager_run smoke --binary "$install_root/current/codex"
         ;;
+    appserver-smoke)
+        manager_run app-server-live-smoke \
+            --binary "$install_root/current/codex" \
+            --cwd "$PWD"
+        ;;
     enable)
         manager_run enable
         ;;
@@ -168,7 +174,7 @@ case "${1:-help}" in
     logs)
         lines="${2:-100}"
         case "$lines" in *[!0-9]*|'') printf 'lines must be a positive integer\n' >&2; exit 2 ;; esac
-        for log_file in "$install_root/logs/updater.log" "$install_root/logs/launcher.log"; do
+        for log_file in "$install_root/logs/gateway.log" "$install_root/logs/updater.log" "$install_root/logs/launcher.log"; do
             if [ -f "$log_file" ]; then
                 printf '\n== %s ==\n' "$log_file"
                 tail -n "$lines" "$log_file"

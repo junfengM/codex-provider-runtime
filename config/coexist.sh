@@ -25,7 +25,7 @@ CACHE="$CODEX_DIR/models_cache.json"
 CUSTOM="$CODEX_DIR/models.json"
 COEXIST="$CODEX_DIR/models-coexist.json"
 BACKUP_DIR="$CODEX_DIR/backup-coexist"
-DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+DEEPSEEK_GATEWAY_URL="${DEEPSEEK_GATEWAY_URL:-http://127.0.0.1:17892}"
 DEEPSEEK_KEYCHAIN_SERVICE="${DEEPSEEK_KEYCHAIN_SERVICE:-com.openai.codex.deepseek-api-key}"
 DEEPSEEK_KEYCHAIN_ACCOUNT="${DEEPSEEK_KEYCHAIN_ACCOUNT:-$(id -un)}"
 
@@ -116,6 +116,51 @@ has_deepseek_provider() {
   grep -q '^\[model_providers\.deepseek\]$' "$CONFIG"
 }
 
+deepseek_provider_value() {
+  local key="$1"
+  awk -v key="$key" '
+    /^\[model_providers\.deepseek\]$/ { in_provider = 1; next }
+    /^\[/ { in_provider = 0 }
+    in_provider && $0 ~ "^" key "[[:space:]]*=" {
+      sub(/^[^=]*=[[:space:]]*/, "")
+      gsub(/^"|"$/, "")
+      print
+      exit
+    }
+  ' "$CONFIG"
+}
+
+reconcile_deepseek_gateway_url() {
+  local tmp
+  tmp="$(mktemp)"
+  awk -v url="$DEEPSEEK_GATEWAY_URL" '
+    BEGIN { in_provider = 0; wrote = 0 }
+    /^\[model_providers\.deepseek\]$/ {
+      in_provider = 1
+      wrote = 0
+      print
+      next
+    }
+    /^\[/ {
+      if (in_provider && !wrote) print "base_url = \"" url "\""
+      in_provider = 0
+      print
+      next
+    }
+    in_provider && /^base_url[[:space:]]*=/ {
+      if (!wrote) print "base_url = \"" url "\""
+      wrote = 1
+      next
+    }
+    { print }
+    END {
+      if (in_provider && !wrote) print "base_url = \"" url "\""
+    }
+  ' "$CONFIG" > "$tmp"
+  mv "$tmp" "$CONFIG"
+  chmod 0600 "$CONFIG"
+}
+
 keychain_has_deepseek_key() {
   [ "$(uname -s)" = "Darwin" ] || return 1
   command -v security >/dev/null 2>&1 || return 1
@@ -142,7 +187,10 @@ keychain_set() {
 
 ensure_deepseek_provider() {
   require_config
-  has_deepseek_provider && return
+  if has_deepseek_provider; then
+    reconcile_deepseek_gateway_url
+    return
+  fi
 
   local tmp
   tmp="$(mktemp)"
@@ -153,7 +201,7 @@ ensure_deepseek_provider() {
 
 [model_providers.deepseek]
 name = "DeepSeek"
-base_url = "$DEEPSEEK_BASE_URL"
+base_url = "$DEEPSEEK_GATEWAY_URL"
 wire_api = "responses"
 
 [model_providers.deepseek.auth]
@@ -167,7 +215,7 @@ EOF
 
 [model_providers.deepseek]
 name = "DeepSeek"
-base_url = "$DEEPSEEK_BASE_URL"
+base_url = "$DEEPSEEK_GATEWAY_URL"
 wire_api = "responses"
 env_key = "DEEPSEEK_API_KEY"
 env_key_instructions = "Set DEEPSEEK_API_KEY before starting Codex."
@@ -369,6 +417,7 @@ status() {
   info "catalog    = $(config_get model_catalog_json)"
   info "forced_login_method = $(config_get forced_login_method)"
   info "providers  = $(provider_names | tr '\n' ' ')"
+  info "deepseek gateway = $(deepseek_provider_value base_url)"
   if [ -n "$CODEX_BIN" ]; then
     info "加载的模型（codex debug models）:"
     "$CODEX_BIN" debug models 2>/dev/null | jq -r '.models[].slug' | sed 's/^/  /'
@@ -381,6 +430,8 @@ validate() {
   require_config
   [ -n "$CODEX_BIN" ] || die "未找到 codex CLI"
   has_deepseek_provider || die "config.toml 中未注册 DeepSeek provider"
+  [ "$(deepseek_provider_value base_url)" = "$DEEPSEEK_GATEWAY_URL" ] \
+    || die "DeepSeek provider 未指向本机兼容网关 $DEEPSEEK_GATEWAY_URL"
   [ -z "$(config_get forced_login_method)" ] || die "forced_login_method 会绕过 ChatGPT 登录"
   local models
   info "== codex debug models =="
@@ -434,15 +485,15 @@ test_deepseek() {
       -c 'model_provider="deepseek"' \
       -c 'model_reasoning_effort="high"' \
       -m deepseek-v4-flash \
-      'Reply with exactly: DEEPSEEK_ROUTE_OK' 2>&1
+      'You must use the available shell execution tool to run printf CODEX_DEEPSEEK_TOOL_OK. After the tool result, reply with exactly: CODEX_DEEPSEEK_TOOL_OK' 2>&1
   )"; then
     printf '%s\n' "$output" >&2
     die "DeepSeek 显式路由测试失败"
   fi
   printf '%s\n' "$output"
-  printf '%s\n' "$output" | grep -q 'DEEPSEEK_ROUTE_OK' \
-    || die "响应中缺少 DEEPSEEK_ROUTE_OK"
-  info "DeepSeek 显式路由测试通过。"
+  printf '%s\n' "$output" | grep -q 'CODEX_DEEPSEEK_TOOL_OK' \
+    || die "响应中缺少 CODEX_DEEPSEEK_TOOL_OK"
+  info "DeepSeek 显式路由与结构化工具调用测试通过。"
 }
 
 case "${1:-}" in

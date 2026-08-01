@@ -12,6 +12,7 @@ import argparse
 import datetime as dt
 import fcntl
 import hashlib
+import http.client
 import json
 import os
 import plistlib
@@ -34,6 +35,10 @@ MODULE_MARKER = "mod provider_route;"
 CALL_MARKER = "model_provider_for_new_thread(model.as_deref(), model_provider)"
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
+GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
+GATEWAY_HOST = "127.0.0.1"
+GATEWAY_PORT = 17892
+DEEPSEEK_UPSTREAM = "https://api.deepseek.com"
 LEGACY_SUPPORT_NAMES = {
     "com.dudu.codex-deepseek-router-environment.plist",
     "com.dudu.codex-deepseek-router-updater.plist",
@@ -286,6 +291,25 @@ def read_response(process: subprocess.Popen, request_id: int, timeout: float = 3
     raise RouterError(f"timed out waiting for app-server response {request_id}")
 
 
+def read_json_message(process: subprocess.Popen, deadline: float) -> dict:
+    assert process.stdout is not None
+    while time.monotonic() < deadline:
+        wait_for = max(0.0, min(0.5, deadline - time.monotonic()))
+        ready, _, _ = select.select([process.stdout], [], [], wait_for)
+        if not ready:
+            if process.poll() is not None:
+                raise RouterError("app-server exited while waiting for a notification")
+            continue
+        line = process.stdout.readline()
+        if not line:
+            continue
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError as error:
+            raise RouterError(f"app-server emitted non-JSON stdout: {line[:200]!r}") from error
+    raise RouterError("timed out waiting for app-server notification")
+
+
 def configured_model_catalog() -> Path:
     config = Path.home() / ".codex" / "config.toml"
     if not config.is_file():
@@ -382,6 +406,215 @@ def protocol_smoke(binary: Path) -> dict:
                 stderr.flush()
                 stderr.seek(0)
                 detail = stderr.read()[-4000:]
+                if detail:
+                    raise RouterError(f"{error}\napp-server stderr:\n{detail}") from error
+                raise
+            finally:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+
+
+def app_server_deepseek_tool_smoke(binary: Path, cwd: Path) -> dict:
+    """Exercise the same public app-server path used by a new Remote thread."""
+    if not cwd.is_dir():
+        raise RouterError(f"app-server smoke cwd is not a directory: {cwd}")
+    with tempfile.TemporaryDirectory(prefix="codex-app-server-live-smoke-") as temporary:
+        temporary_path = Path(temporary)
+        challenge_path = temporary_path / "challenge.bin"
+        challenge = os.urandom(32)
+        challenge_path.write_bytes(challenge)
+        expected_hash = hashlib.sha256(challenge).hexdigest()
+        command = f"shasum -a 256 {challenge_path}"
+        javascript = (
+            "const r = await tools.exec_command("
+            + json.dumps({"cmd": command}, separators=(",", ":"))
+            + "); text(r.output);"
+        )
+        prompt = (
+            "You must call the top-level exec Code Mode tool with JavaScript source. "
+            "Do not call node_repl or node_repl/js. The JavaScript must be exactly: "
+            f"{javascript} After the tool result, reply with only the first whitespace-separated "
+            "field from the command output. Do not guess or compute it yourself."
+        )
+        stderr_path = temporary_path / "stderr.log"
+        env = os.environ.copy()
+        env["CODEX_CLI_PATH"] = os.fspath(binary)
+        with stderr_path.open("w+", encoding="utf-8") as stderr:
+            process = subprocess.Popen(
+                [os.fspath(binary), "app-server"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=stderr,
+                text=True,
+                bufsize=1,
+                env=env,
+            )
+            try:
+                send_json_line(
+                    process,
+                    {
+                        "method": "initialize",
+                        "id": 1,
+                        "params": {
+                            "clientInfo": {
+                                "name": "codex-provider-runtime-app-server-smoke",
+                                "title": "Codex provider runtime app-server smoke",
+                                "version": "1",
+                            },
+                            "capabilities": {"experimentalApi": True},
+                        },
+                    },
+                )
+                read_response(process, 1)
+                send_json_line(process, {"method": "initialized"})
+                send_json_line(
+                    process,
+                    {
+                        "method": "thread/start",
+                        "id": 2,
+                        "params": {
+                            "model": "deepseek-v4-flash",
+                            "cwd": os.fspath(cwd),
+                            "approvalPolicy": "never",
+                            "sandbox": "read-only",
+                            "ephemeral": True,
+                        },
+                    },
+                )
+                started = read_response(process, 2)
+                thread_id = started.get("thread", {}).get("id")
+                if not thread_id:
+                    raise RouterError("app-server thread/start returned no thread id")
+                if started.get("modelProvider") != "deepseek":
+                    raise RouterError(
+                        f"app-server routed DeepSeek model to {started.get('modelProvider')!r}"
+                    )
+                send_json_line(
+                    process,
+                    {
+                        "method": "turn/start",
+                        "id": 3,
+                        "params": {
+                            "threadId": thread_id,
+                            "input": [{"type": "text", "text": prompt}],
+                            "cwd": os.fspath(cwd),
+                            "approvalPolicy": "never",
+                        },
+                    },
+                )
+
+                deadline = time.monotonic() + 180.0
+                turn_accepted = False
+                turn_terminal = False
+                turn_status: Optional[str] = None
+                turn_error: object = None
+                command_completed = False
+                command_output = ""
+                structured_tool_completed = False
+                structured_tool_type: Optional[str] = None
+                agent_text = ""
+                item_types: list[str] = []
+                recent_events: list[dict[str, object]] = []
+                while time.monotonic() < deadline and not turn_terminal:
+                    try:
+                        message = read_json_message(process, deadline)
+                    except RouterError as error:
+                        raise RouterError(
+                            f"{error}; recent app-server events: "
+                            + json.dumps(recent_events[-20:], ensure_ascii=False)
+                        ) from error
+                    if message.get("id") == 3:
+                        if "error" in message:
+                            raise RouterError(f"app-server turn/start failed: {message['error']}")
+                        turn_accepted = True
+                        continue
+                    method = message.get("method")
+                    params = message.get("params") if isinstance(message.get("params"), dict) else {}
+                    item = params.get("item") if isinstance(params.get("item"), dict) else {}
+                    item_type = item.get("type")
+                    recent_events.append(
+                        {
+                            "method": method,
+                            "item_type": item_type,
+                            "item_status": item.get("status"),
+                            "thread_status": params.get("status"),
+                        }
+                    )
+                    if isinstance(item_type, str) and item_type not in item_types:
+                        item_types.append(item_type)
+                    if method == "item/completed" and item_type == "commandExecution":
+                        command_completed = item.get("status") == "completed"
+                        command_output = str(item.get("aggregatedOutput") or "")
+                    if method == "item/completed" and item_type in {
+                        "commandExecution",
+                        "mcpToolCall",
+                        "dynamicToolCall",
+                    }:
+                        serialized_item = json.dumps(item, ensure_ascii=False)
+                        if item.get("status") == "completed" and expected_hash in serialized_item:
+                            structured_tool_completed = True
+                            structured_tool_type = str(item_type)
+                    if method == "item/completed" and item_type == "agentMessage":
+                        agent_text += str(item.get("text") or "")
+                    if method == "turn/completed":
+                        turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
+                        turn_status = str(turn.get("status") or "unknown")
+                        turn_error = turn.get("error")
+                        turn_terminal = True
+                    if method == "thread/status/changed":
+                        status = params.get("status")
+                        status_type = status.get("type") if isinstance(status, dict) else status
+                        if status_type == "idle" and agent_text:
+                            # Some ephemeral app-server sessions in this build
+                            # transition to idle after final item/completed but
+                            # omit the redundant turn/completed notification.
+                            turn_status = "completed"
+                            turn_terminal = True
+
+                if not turn_accepted:
+                    raise RouterError("app-server did not acknowledge turn/start")
+                if not turn_terminal:
+                    raise RouterError("app-server DeepSeek turn did not reach a terminal event")
+                if turn_status != "completed":
+                    raise RouterError(
+                        f"app-server DeepSeek turn ended with status={turn_status!r}, "
+                        f"error={turn_error!r}"
+                    )
+                if not command_completed or expected_hash not in command_output:
+                    raise RouterError(
+                        "app-server DeepSeek did not complete commandExecution with the hidden "
+                        f"SHA-256 result; item_types={item_types!r}, "
+                        f"recent_events={recent_events[-20:]!r}"
+                    )
+                if not structured_tool_completed or structured_tool_type != "commandExecution":
+                    raise RouterError(
+                        "app-server DeepSeek did not expose the hidden SHA-256 result through "
+                        f"a structured commandExecution; item_types={item_types!r}"
+                    )
+                if expected_hash not in agent_text:
+                    raise RouterError(
+                        "app-server DeepSeek final agentMessage did not match the hidden SHA-256 "
+                        f"execution challenge; item_types={item_types!r}, "
+                        f"agent_text={agent_text[:1000]!r}, "
+                        f"recent_events={recent_events[-20:]!r}"
+                    )
+                return {
+                    "thread_id": thread_id,
+                    "model_provider": started.get("modelProvider"),
+                    "structured_tool": structured_tool_type,
+                    "structured_command": command_completed,
+                    "execution_proof": "hidden SHA-256 challenge matched",
+                    "final_message": expected_hash,
+                    "item_types": item_types,
+                }
+            except Exception as error:
+                stderr.flush()
+                stderr.seek(0)
+                detail = stderr.read()[-8000:]
                 if detail:
                     raise RouterError(f"{error}\napp-server stderr:\n{detail}") from error
                 raise
@@ -590,6 +823,48 @@ def plist_updater(manager: Path, official_codex: Path, install_root: Path) -> di
     }
 
 
+def plist_gateway(gateway: Path, install_root: Path) -> dict:
+    return {
+        "Label": GATEWAY_LABEL,
+        "ProgramArguments": [
+            "/usr/bin/python3",
+            os.fspath(gateway),
+            "--host",
+            GATEWAY_HOST,
+            "--port",
+            str(GATEWAY_PORT),
+            "--upstream",
+            DEEPSEEK_UPSTREAM,
+        ],
+        "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ThrottleInterval": 5,
+        "ProcessType": "Interactive",
+        "Umask": 63,
+        "StandardOutPath": os.fspath(install_root / "logs" / "gateway.log"),
+        "StandardErrorPath": os.fspath(install_root / "logs" / "gateway.log"),
+    }
+
+
+def gateway_health(timeout: float = 1.0) -> dict:
+    connection = http.client.HTTPConnection(GATEWAY_HOST, GATEWAY_PORT, timeout=timeout)
+    try:
+        connection.request("GET", "/healthz", headers={"Accept": "application/json"})
+        response = connection.getresponse()
+        body = response.read(64 * 1024)
+        if response.status != 200:
+            raise RouterError(f"DeepSeek gateway health returned HTTP {response.status}")
+        payload = json.loads(body)
+        if payload.get("status") != "ok":
+            raise RouterError("DeepSeek gateway health payload is not ok")
+        return payload
+    except (OSError, http.client.HTTPException, json.JSONDecodeError) as error:
+        raise RouterError(f"DeepSeek gateway is unavailable: {error}") from error
+    finally:
+        connection.close()
+
+
 def install_support(project_root: Path, install_root: Path, official_codex: Path) -> None:
     lib = install_root / "lib"
     bin_dir = install_root / "bin"
@@ -597,6 +872,7 @@ def install_support(project_root: Path, install_root: Path, official_codex: Path
     for directory in (lib / "patches", lib / "templates", bin_dir, logs):
         directory.mkdir(parents=True, exist_ok=True)
     shutil.copy2(project_root / "router_manager.py", lib / "router_manager.py")
+    shutil.copy2(project_root / "deepseek_gateway.py", lib / "deepseek_gateway.py")
     shutil.copy2(
         project_root / "patches" / "provider_route.rs",
         lib / "patches" / "provider_route.rs",
@@ -612,6 +888,9 @@ def install_support(project_root: Path, install_root: Path, official_codex: Path
     agents = Path.home() / "Library" / "LaunchAgents"
     agents.mkdir(parents=True, exist_ok=True)
     definitions = {
+        agents / f"{GATEWAY_LABEL}.plist": plist_gateway(
+            lib / "deepseek_gateway.py", install_root
+        ),
         agents / f"{ENVIRONMENT_LABEL}.plist": plist_environment(launcher),
         agents / f"{UPDATER_LABEL}.plist": plist_updater(
             lib / "router_manager.py", official_codex, install_root
@@ -663,12 +942,26 @@ def activate_support(project_root: Path, install_root: Path, official_codex: Pat
     agents = Path.home() / "Library" / "LaunchAgents"
     environment_agent = agents / f"{ENVIRONMENT_LABEL}.plist"
     updater_agent = agents / f"{UPDATER_LABEL}.plist"
+    gateway_agent = agents / f"{GATEWAY_LABEL}.plist"
     for label, path in (
+        (GATEWAY_LABEL, gateway_agent),
         (ENVIRONMENT_LABEL, environment_agent),
         (UPDATER_LABEL, updater_agent),
     ):
         launchctl_allow_failure(["bootout", f"{domain}/{label}"])
         run(["/bin/launchctl", "bootstrap", domain, path])
+
+    last_gateway_error: Optional[Exception] = None
+    for _ in range(20):
+        try:
+            health = gateway_health()
+            print("DeepSeek gateway health:", json.dumps(health, sort_keys=True))
+            break
+        except RouterError as error:
+            last_gateway_error = error
+            time.sleep(0.25)
+    else:
+        raise RouterError(str(last_gateway_error or "DeepSeek gateway failed to start"))
 
     launcher = install_root / "bin" / "codex-router"
     run(["/bin/launchctl", "setenv", "CODEX_CLI_PATH", launcher])
@@ -743,6 +1036,9 @@ def status(install_root: Path, official_codex: Path) -> int:
     payload["legacy_cli_path_agents"] = legacy_cli_path_agents()
     payload["legacy_support_agents"] = legacy_support_agents()
     payload["support_agents"] = {
+        "deepseek_gateway": os.fspath(
+            Path.home() / "Library" / "LaunchAgents" / f"{GATEWAY_LABEL}.plist"
+        ),
         "environment": os.fspath(
             Path.home() / "Library" / "LaunchAgents" / f"{ENVIRONMENT_LABEL}.plist"
         ),
@@ -754,11 +1050,16 @@ def status(install_root: Path, official_codex: Path) -> int:
         payload["cargo"] = os.fspath(find_cargo())
     except RouterError:
         payload["cargo"] = None
+    try:
+        payload["deepseek_gateway"] = gateway_health()
+    except RouterError as error:
+        payload["deepseek_gateway"] = {"status": "unavailable", "error": str(error)}
     payload["router_will_activate"] = bool(
         not disabled
         and manifest
         and manifest.get("codex_version") == payload.get("official_version")
         and (install_root / "current" / "codex").is_file()
+        and payload["deepseek_gateway"].get("status") == "ok"
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0 if payload["router_will_activate"] else 1
@@ -789,7 +1090,7 @@ def uninstall_support(install_root: Path) -> None:
     backups.mkdir(parents=True, exist_ok=True)
     timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    for label in (ENVIRONMENT_LABEL, UPDATER_LABEL):
+    for label in (GATEWAY_LABEL, ENVIRONMENT_LABEL, UPDATER_LABEL):
         launchctl_allow_failure(["bootout", f"{domain}/{label}"])
         path = agents / f"{label}.plist"
         if path.is_file():
@@ -845,6 +1146,9 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     verify.add_argument("--source", type=Path, required=True)
     smoke = subparsers.add_parser("smoke")
     smoke.add_argument("--binary", type=Path, required=True)
+    live_smoke = subparsers.add_parser("app-server-live-smoke")
+    live_smoke.add_argument("--binary", type=Path, required=True)
+    live_smoke.add_argument("--cwd", type=Path, default=Path.cwd())
     subparsers.add_parser("install-support")
     subparsers.add_parser("activate-support")
     subparsers.add_parser("disable")
@@ -865,6 +1169,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
         if args.command == "smoke":
             print(json.dumps(protocol_smoke(args.binary.resolve()), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "app-server-live-smoke":
+            print(
+                json.dumps(
+                    app_server_deepseek_tool_smoke(
+                        args.binary.resolve(), args.cwd.resolve()
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return 0
         if args.command == "install-support":
             install_support(project_root, args.install_root, args.official_codex)

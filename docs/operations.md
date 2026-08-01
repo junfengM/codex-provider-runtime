@@ -9,7 +9,18 @@
 
 Restart Desktop, then run `./bin/codex-provider doctor --live` and create one
 new GPT chat plus one new DeepSeek chat. When phone access matters, create one
-new phone Remote DeepSeek chat as the final acceptance check.
+new phone Remote DeepSeek chat as the final acceptance check. The automated
+equivalent is:
+
+```bash
+./bin/codex-provider test-deepseek
+./bin/codex-provider appserver-smoke
+```
+
+The second command creates an ephemeral app-server thread, routes it to
+DeepSeek, asks Code Mode to hash a hidden random file through
+`tools.exec_command`, and requires the final message to match the locally
+calculated hash.
 
 ## Routine health check
 
@@ -20,6 +31,8 @@ new phone Remote DeepSeek chat as the final acceptance check.
 ```
 
 Use `doctor --live` only when one ephemeral paid API request is appropriate.
+`logs` includes `gateway.log`; the gateway records health/request status only,
+not prompts, responses, arguments, or Authorization headers.
 
 ## Desktop upgrade
 
@@ -33,6 +46,10 @@ Manual reconciliation is safe and idempotent:
 
 Restart Desktop after a new release is activated. Verify actual rollout
 provider metadata; do not rely on the picker label.
+
+The gateway LaunchAgent is version-independent. The updater rebuilds the exact
+Codex tag only when the bundled backend changes, then the stable launcher
+atomically adopts the matching release.
 
 ## Emergency fallback
 
@@ -70,6 +87,7 @@ Collect without secrets:
 - bundled and current manifest versions/checksums;
 - affected rollout `session_meta.model_provider` and turn model;
 - structured error event types.
+- gateway health (`status = ok`) and LaunchAgent state.
 
 Do not attach full prompts, responses, `auth.json`, `config.toml`, Keychain
 output, or entire rollout files to an issue.

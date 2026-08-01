@@ -26,7 +26,15 @@ class CliTests(unittest.TestCase):
     def test_help_lists_lifecycle_commands(self) -> None:
         result = self.run_cli("--help")
         self.assertEqual(result.returncode, 0, result.stderr)
-        for command in ("install", "doctor", "update", "disable", "uninstall"):
+        for command in (
+            "install",
+            "doctor",
+            "update",
+            "disable",
+            "uninstall",
+            "test-deepseek",
+            "appserver-smoke",
+        ):
             self.assertIn(command, result.stdout)
 
     def test_unknown_command_fails_without_mutation(self) -> None:
