@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+
+launcher_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+router_root="${CODEX_PROVIDER_RUNTIME_ROOT:-$(dirname -- "$launcher_dir")}"
+official_codex="${CODEX_OFFICIAL_CLI_PATH:-/Applications/ChatGPT.app/Contents/Resources/codex}"
+current_dir="$router_root/current"
+custom_codex="$current_dir/codex"
+manifest="$current_dir/manifest.json"
+manager="$router_root/lib/router_manager.py"
+log_file="$router_root/logs/launcher.log"
+disabled_marker="$router_root/disabled"
+
+mkdir -p "$router_root/logs"
+
+if [ ! -x "$official_codex" ]; then
+    printf '%s official Codex backend is missing: %s\n' "$(date -u +%FT%TZ)" "$official_codex" >>"$log_file"
+    exit 127
+fi
+
+official_version="$($official_codex --version 2>/dev/null | awk '{print $2; exit}')"
+custom_version=""
+if [ -r "$manifest" ]; then
+    custom_version="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("codex_version", ""))' "$manifest" 2>/dev/null || true)"
+fi
+
+if [ ! -e "$disabled_marker" ] && [ -n "$official_version" ] && [ "$official_version" = "$custom_version" ] && [ -x "$custom_codex" ]; then
+    export CODEX_CLI_PATH="$custom_codex"
+    exec "$custom_codex" "$@"
+fi
+
+if [ ! -e "$disabled_marker" ] && { [ -x "$manager" ] || [ -r "$manager" ]; }; then
+    /usr/bin/python3 "$manager" \
+        --install-root "$router_root" \
+        --official-codex "$official_codex" \
+        update --non-interactive >>"$router_root/logs/updater.log" 2>&1 &
+fi
+
+printf '%s version mismatch (official=%s custom=%s); using official backend\n' \
+    "$(date -u +%FT%TZ)" "$official_version" "$custom_version" >>"$log_file"
+export CODEX_CLI_PATH="$official_codex"
+exec "$official_codex" "$@"
