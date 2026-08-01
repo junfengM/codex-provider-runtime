@@ -32,6 +32,7 @@ DEFAULT_INSTALL_ROOT = Path.home() / ".codex" / "provider-runtime"
 VERSION_RE = re.compile(r"^codex-cli\s+(\S+)\s*$")
 MODULE_MARKER = "mod provider_route;"
 CALL_MARKER = "model_provider_for_new_thread(model.as_deref(), model_provider)"
+HISTORY_CALL_MARKER = "model_provider_filter_for_thread_list(model_providers)"
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
 RETIRED_GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
@@ -116,54 +117,106 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
 
     parent_text = parent.read_text(encoding="utf-8")
     thread_text = thread.read_text(encoding="utf-8")
-    already_patched = (
+    fully_patched = (
         MODULE_MARKER in parent_text
         and CALL_MARKER in thread_text
+        and HISTORY_CALL_MARKER in thread_text
         and destination.is_file()
     )
-    if already_patched:
+    if fully_patched:
         if destination.read_bytes() == patch_asset.read_bytes():
             return "already-patched"
         shutil.copy2(patch_asset, destination)
         return "updated-patch-asset"
-    if MODULE_MARKER in parent_text or CALL_MARKER in thread_text or destination.exists():
-        raise RouterError("Source contains a partial router patch; refusing mixed state")
 
-    parent_anchor = "mod process_exec_processor;\nmod remote_control_processor;"
-    parent_replacement = (
-        "mod process_exec_processor;\nmod provider_route;\nmod remote_control_processor;"
+    legacy_router_patch = (
+        MODULE_MARKER in parent_text
+        and CALL_MARKER in thread_text
+        and HISTORY_CALL_MARKER not in thread_text
+        and destination.is_file()
     )
-    parent_text = replace_once(
-        parent_text,
-        parent_anchor,
-        parent_replacement,
-        description="request processor module declaration",
+    fresh_source = (
+        MODULE_MARKER not in parent_text
+        and CALL_MARKER not in thread_text
+        and HISTORY_CALL_MARKER not in thread_text
+        and not destination.exists()
     )
+    if not fresh_source and not legacy_router_patch:
+        raise RouterError("Source contains a partial provider patch; refusing mixed state")
 
-    use_anchor = "use super::*;\n"
-    use_replacement = (
-        "use super::*;\nuse super::provider_route::model_provider_for_new_thread;\n"
+    if fresh_source:
+        parent_anchor = "mod process_exec_processor;\nmod remote_control_processor;"
+        parent_replacement = (
+            "mod process_exec_processor;\nmod provider_route;\nmod remote_control_processor;"
+        )
+        parent_text = replace_once(
+            parent_text,
+            parent_anchor,
+            parent_replacement,
+            description="request processor module declaration",
+        )
+
+        use_anchor = "use super::*;\n"
+        use_replacement = (
+            "use super::*;\n"
+            "use super::provider_route::model_provider_filter_for_thread_list;\n"
+            "use super::provider_route::model_provider_for_new_thread;\n"
+        )
+        thread_text = replace_once(
+            thread_text,
+            use_anchor,
+            use_replacement,
+            description="thread processor imports",
+        )
+
+        call_anchor = "            environments,\n        } = params;\n        if matches!("
+        call_replacement = (
+            "            environments,\n"
+            "        } = params;\n"
+            "        let model_provider =\n"
+            "            model_provider_for_new_thread(model.as_deref(), model_provider);\n"
+            "        if matches!("
+        )
+        thread_text = replace_once(
+            thread_text,
+            call_anchor,
+            call_replacement,
+            description="new-thread provider normalization",
+        )
+    else:
+        legacy_import = "use super::provider_route::model_provider_for_new_thread;\n"
+        upgraded_import = (
+            "use super::provider_route::model_provider_filter_for_thread_list;\n"
+            "use super::provider_route::model_provider_for_new_thread;\n"
+        )
+        thread_text = replace_once(
+            thread_text,
+            legacy_import,
+            upgraded_import,
+            description="legacy provider patch import upgrade",
+        )
+
+    history_anchor = """        let model_provider_filter = match model_providers {
+            Some(providers) => {
+                if providers.is_empty() {
+                    None
+                } else {
+                    Some(providers)
+                }
+            }
+            None if relation_filter.is_some() => None,
+            None => Some(vec![self.config.model_provider_id.clone()]),
+        };
+"""
+    history_replacement = (
+        "        let model_provider_filter =\n"
+        "            model_provider_filter_for_thread_list(model_providers);\n"
     )
     thread_text = replace_once(
         thread_text,
-        use_anchor,
-        use_replacement,
-        description="thread processor import",
-    )
-
-    call_anchor = "            environments,\n        } = params;\n        if matches!("
-    call_replacement = (
-        "            environments,\n"
-        "        } = params;\n"
-        "        let model_provider =\n"
-        "            model_provider_for_new_thread(model.as_deref(), model_provider);\n"
-        "        if matches!("
-    )
-    thread_text = replace_once(
-        thread_text,
-        call_anchor,
-        call_replacement,
-        description="new-thread provider normalization",
+        history_anchor,
+        history_replacement,
+        description="all-provider thread-list default",
     )
 
     parent.write_text(parent_text, encoding="utf-8")
@@ -418,6 +471,136 @@ def protocol_smoke(binary: Path) -> dict:
                     process.wait(timeout=5)
 
 
+def thread_list_visibility_smoke(binary: Path) -> dict:
+    """Prove that the public omitted filter has the same semantics as []."""
+    with tempfile.TemporaryDirectory(prefix="codex-thread-list-smoke-") as temporary:
+        stderr_path = Path(temporary) / "stderr.log"
+        env = os.environ.copy()
+        env["CODEX_CLI_PATH"] = os.fspath(binary)
+        with stderr_path.open("w+", encoding="utf-8") as stderr:
+            process = subprocess.Popen(
+                [os.fspath(binary), "app-server"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=stderr,
+                text=True,
+                bufsize=1,
+                env=env,
+            )
+            try:
+                send_json_line(
+                    process,
+                    {
+                        "method": "initialize",
+                        "id": 1,
+                        "params": {
+                            "clientInfo": {
+                                "name": "codex-provider-thread-list-smoke",
+                                "title": "Codex provider thread-list smoke",
+                                "version": "1",
+                            },
+                            "capabilities": {"experimentalApi": True},
+                        },
+                    },
+                )
+                read_response(process, 1)
+                send_json_line(process, {"method": "initialized"})
+
+                request_id = 2
+                results: dict[str, dict] = {}
+                for attempt in range(3):
+                    results = {}
+                    for name, include_filter, provider_filter in (
+                        ("omitted", False, None),
+                        ("null", True, None),
+                        ("empty", True, []),
+                        ("deepseek", True, ["deepseek"]),
+                    ):
+                        params: dict[str, object] = {
+                            "limit": 100,
+                            "sortKey": "created_at",
+                            "sortDirection": "desc",
+                            "useStateDbOnly": True,
+                        }
+                        if include_filter:
+                            params["modelProviders"] = provider_filter
+                        send_json_line(
+                            process,
+                            {
+                                "method": "thread/list",
+                                "id": request_id,
+                                "params": params,
+                            },
+                        )
+                        result = read_response(process, request_id)
+                        request_id += 1
+                        data = result.get("data")
+                        if not isinstance(data, list):
+                            raise RouterError(f"thread/list {name} returned invalid data")
+                        results[name] = result
+
+                    omitted_ids = [item.get("id") for item in results["omitted"]["data"]]
+                    null_ids = [item.get("id") for item in results["null"]["data"]]
+                    empty_ids = [item.get("id") for item in results["empty"]["data"]]
+                    cursors = {
+                        results[name].get("nextCursor")
+                        for name in ("omitted", "null", "empty")
+                    }
+                    if omitted_ids == null_ids == empty_ids and len(cursors) == 1:
+                        break
+                    if attempt == 2:
+                        raise RouterError(
+                            "thread/list omitted/null/empty modelProviders pages diverged "
+                            "across three attempts: "
+                            f"omitted={omitted_ids[:20]!r}, null={null_ids[:20]!r}, "
+                            f"empty={empty_ids[:20]!r}, cursors={cursors!r}"
+                        )
+
+                deepseek_items = results["deepseek"]["data"]
+                unexpected = [
+                    item.get("modelProvider")
+                    for item in deepseek_items
+                    if item.get("modelProvider") != "deepseek"
+                ]
+                if unexpected:
+                    raise RouterError(
+                        "thread/list explicit DeepSeek filter returned other providers: "
+                        f"{unexpected!r}"
+                    )
+
+                provider_counts: dict[str, int] = {}
+                for item in results["empty"]["data"]:
+                    provider = str(item.get("modelProvider") or "unknown")
+                    provider_counts[provider] = provider_counts.get(provider, 0) + 1
+                return {
+                    "omitted_null_empty_match": True,
+                    "all_provider_page_size": len(empty_ids),
+                    "providers": provider_counts,
+                    "deepseek_page_size": len(deepseek_items),
+                }
+            except Exception as error:
+                stderr.flush()
+                stderr.seek(0)
+                detail = stderr.read()[-4000:]
+                if detail:
+                    raise RouterError(f"{error}\napp-server stderr:\n{detail}") from error
+                raise
+            finally:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+
+
+def protocol_smoke_suite(binary: Path) -> dict:
+    return {
+        "new_thread_routing": protocol_smoke(binary),
+        "thread_list_visibility": thread_list_visibility_smoke(binary),
+    }
+
+
 def app_server_deepseek_tool_smoke(binary: Path, cwd: Path) -> dict:
     """Exercise the same public app-server path used by a new Remote thread."""
     if not cwd.is_dir():
@@ -640,9 +823,9 @@ def verify_existing_release(release: Path, manifest: dict, version: str) -> None
     if codex_version(custom) != version:
         raise RouterError(f"Existing custom Codex version mismatch: {custom}")
     run([host, "--help"], capture=True)
-    smoke_name = "app-server DeepSeek/GPT new-thread protocol smoke"
+    smoke_name = "app-server routing and all-provider thread-list protocol smoke"
     if smoke_name not in manifest.get("tests", []):
-        smoke_result = protocol_smoke(custom)
+        smoke_result = protocol_smoke_suite(custom)
         manifest.setdefault("tests", []).append(smoke_name)
         manifest["protocol_smoke"] = smoke_result
         manifest["certified_at"] = utc_now()
@@ -724,7 +907,7 @@ def build_release(
     if codex_version(built_codex) != version:
         raise RouterError("Built Codex version does not match the bundled client version")
     run([built_host, "--help"], capture=True)
-    smoke_result = protocol_smoke(built_codex)
+    smoke_result = protocol_smoke_suite(built_codex)
     print("Protocol smoke:", json.dumps(smoke_result, ensure_ascii=False, sort_keys=True))
     sign_if_available(built_codex)
     sign_if_available(built_host)
@@ -745,7 +928,7 @@ def build_release(
         "patch_sha256": patch_digest,
         "custom_sha256": sha256(staging / "codex"),
         "code_mode_host_sha256": sha256(staging / "codex-code-mode-host"),
-        "patch": "new-thread-deepseek-flash-route-v2",
+        "patch": "deepseek-flash-route-and-all-provider-history-v3",
         "built_at": utc_now(),
         "workspace_lock_versions_normalized": lock_versions_normalized,
         "protocol_smoke": smoke_result,
@@ -753,7 +936,7 @@ def build_release(
             "provider_route unit tests",
             "binary version smoke",
             "code-mode-host help",
-            "app-server DeepSeek/GPT new-thread protocol smoke",
+            "app-server routing and all-provider thread-list protocol smoke",
         ],
     }
     (staging / "manifest.json").write_text(
@@ -823,6 +1006,12 @@ def plist_updater(manager: Path, official_codex: Path, install_root: Path) -> di
 
 
 def install_support(project_root: Path, install_root: Path, official_codex: Path) -> None:
+    # Stop the scheduled updater before replacing its manager and patch asset.
+    # Otherwise a process using the previous asset can reactivate an older
+    # release between a successful manual build and support activation.
+    domain = f"gui/{os.getuid()}"
+    launchctl_allow_failure(["bootout", f"{domain}/{UPDATER_LABEL}"])
+
     lib = install_root / "lib"
     bin_dir = install_root / "bin"
     logs = install_root / "logs"
@@ -865,6 +1054,9 @@ def launchctl_allow_failure(arguments: Sequence[str]) -> subprocess.CompletedPro
 
 
 def activate_support(project_root: Path, install_root: Path, official_codex: Path) -> None:
+    # Refresh support first so any subsequent scheduled run uses the same patch
+    # asset and manager that certified the active release.
+    install_support(project_root, install_root, official_codex)
     manifest = read_manifest(install_root)
     if not manifest:
         raise RouterError("No built router release is available; run update first")
@@ -872,8 +1064,6 @@ def activate_support(project_root: Path, install_root: Path, official_codex: Pat
     if manifest.get("codex_version") != version:
         raise RouterError("Custom release does not match the current bundled Codex version")
     verify_existing_release(install_root / "current", manifest, version)
-    install_support(project_root, install_root, official_codex)
-
     domain = f"gui/{os.getuid()}"
     backups = install_root / "backups" / "launchagents"
     backups.mkdir(parents=True, exist_ok=True)
@@ -1099,7 +1289,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             verify_patch(args.source.resolve(), patch_asset)
             return 0
         if args.command == "smoke":
-            print(json.dumps(protocol_smoke(args.binary.resolve()), ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    protocol_smoke_suite(args.binary.resolve()),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return 0
         if args.command == "app-server-live-smoke":
             print(

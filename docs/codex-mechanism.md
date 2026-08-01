@@ -49,10 +49,18 @@ protected like the original.
 
 ## Thread visibility
 
-Codex app-server `thread/list` supports a `modelProviders` filter. An unset or
-empty filter includes all providers, but desktop clients can apply their own
-filter. Consequently a thread can be readable by ID and present on disk while
-missing from the current sidebar.
+Codex app-server `thread/list` supports a `modelProviders` filter. Its public
+contract says an unset, null, or empty filter includes all providers, while an
+explicit list filters to those providers. Bundled version `0.146.0-alpha.9.2`
+violated that contract by defaulting an omitted filter to the configured
+provider. Desktop and phone Remote commonly omit the field after navigating
+between conversations, so a valid DeepSeek thread could be readable by ID and
+present on disk while missing from an OpenAI-context sidebar.
+
+The versioned runtime patch normalizes only the omitted/empty default back to
+all providers. It leaves explicit filters and interactive source filtering
+unchanged. The protocol smoke compares omitted and empty result IDs and checks
+that an explicit DeepSeek request contains no other provider.
 
 The supported recovery order is:
 

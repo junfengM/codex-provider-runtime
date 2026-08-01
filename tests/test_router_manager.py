@@ -23,6 +23,18 @@ fn example(params: ThreadStartParams) {
             environments,
         } = params;
         if matches!(history_mode, Some(Example)) {}
+
+        let model_provider_filter = match model_providers {
+            Some(providers) => {
+                if providers.is_empty() {
+                    None
+                } else {
+                    Some(providers)
+                }
+            }
+            None if relation_filter.is_some() => None,
+            None => Some(vec![self.config.model_provider_id.clone()]),
+        };
 }
 """
 
@@ -55,6 +67,45 @@ class PatchSourceTests(unittest.TestCase):
         ).read_text()
         self.assertIn("mod provider_route;", parent)
         self.assertIn(router_manager.CALL_MARKER, thread)
+        self.assertIn(router_manager.HISTORY_CALL_MARKER, thread)
+        self.assertNotIn(
+            "Some(vec![self.config.model_provider_id.clone()])",
+            thread,
+        )
+
+    def test_upgrades_the_legacy_new_thread_only_patch(self) -> None:
+        source = self.root / "source"
+        parent = source / "codex-rs/app-server/src/request_processors.rs"
+        thread = source / "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        destination = source / "codex-rs/app-server/src/request_processors/provider_route.rs"
+        parent.write_text(
+            PARENT.replace(
+                "mod process_exec_processor;\nmod remote_control_processor;",
+                "mod process_exec_processor;\nmod provider_route;\nmod remote_control_processor;",
+            ),
+            encoding="utf-8",
+        )
+        legacy_thread = THREAD.replace(
+            "use super::*;\n",
+            "use super::*;\nuse super::provider_route::model_provider_for_new_thread;\n",
+            1,
+        ).replace(
+            "            environments,\n        } = params;\n        if matches!(",
+            "            environments,\n"
+            "        } = params;\n"
+            "        let model_provider =\n"
+            "            model_provider_for_new_thread(model.as_deref(), model_provider);\n"
+            "        if matches!(",
+            1,
+        )
+        thread.write_text(legacy_thread, encoding="utf-8")
+        destination.write_bytes(self.patch_asset.read_bytes())
+
+        self.assertEqual(router_manager.patch_source(source, self.patch_asset), "patched")
+        upgraded = thread.read_text(encoding="utf-8")
+        self.assertIn(router_manager.CALL_MARKER, upgraded)
+        self.assertIn(router_manager.HISTORY_CALL_MARKER, upgraded)
+        self.assertIn("model_provider_filter_for_thread_list", upgraded)
 
     def test_updates_changed_patch_asset_in_an_existing_patched_tree(self) -> None:
         source = self.root / "source"
@@ -115,6 +166,14 @@ class LockDiffTests(unittest.TestCase):
 
 
 class SupportMetadataTests(unittest.TestCase):
+    def test_patch_asset_covers_routing_and_history_contracts(self) -> None:
+        patch_asset = PROJECT_ROOT / "runtime/patches/provider_route.rs"
+        text = patch_asset.read_text(encoding="utf-8")
+        self.assertIn("model_provider_for_new_thread", text)
+        self.assertIn("model_provider_filter_for_thread_list", text)
+        self.assertIn("omitted_thread_list_filter_includes_all_providers", text)
+        self.assertIn("explicit_thread_list_filter_remains_authoritative", text)
+
     def test_launch_agent_labels_are_machine_independent(self) -> None:
         environment = router_manager.plist_environment(Path("/tmp/codex-provider"))
         updater = router_manager.plist_updater(
