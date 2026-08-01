@@ -28,3 +28,9 @@ it does not purge releases, credentials, or conversations.
 
 On upstream mismatch or patch drift, retain the failure log and use the bundled
 official backend. Never force an old custom release against a newer client.
+
+Before adding a model or changing transport, compare current official Codex and
+provider documentation with a minimal direct API probe and an App Server
+structured-tool smoke. Treat the compatibility matrix as dated evidence. Once
+the new path passes, update its positive/negative route tests, catalog contract,
+release patch identifier, documentation, and skill baseline in the same change.

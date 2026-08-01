@@ -1,4 +1,4 @@
 interface:
   display_name: "Codex Provider Runtime"
-  short_description: "维护 Codex 的 DeepSeek/ChatGPT 本地运行时与手机路由"
-  default_prompt: "Use $codex-provider-runtime to diagnose and safely maintain the local Codex multi-provider runtime."
+  short_description: "演进并维护 Codex 的多 Provider 本地运行时与手机路由"
+  default_prompt: "Use $codex-provider-runtime to reconcile current upstream capabilities, evolve the local multi-provider runtime safely, and verify it end to end."
