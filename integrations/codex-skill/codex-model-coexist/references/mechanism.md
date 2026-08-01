@@ -77,10 +77,17 @@ success claim requires both.
 
 ## Thread visibility
 
-Desktop clients may filter `thread/list` by provider. A thread can remain in
-`state_*.sqlite` and `sessions/**/*.jsonl` while missing from the current
-sidebar. Recover by using Chronological view, auditing all providers, and
-opening by thread ID. Never change `model_provider` merely for visibility.
+The public `thread/list` contract defines unset, null, and empty
+`modelProviders` as all providers; explicit non-empty arrays filter. Verify the
+installed binary because bundled builds can regress this default. The reusable
+runtime restores the public semantics in its versioned patch and compares
+omitted versus empty results in its protocol smoke.
+
+A thread can remain in `state_*.sqlite` and `sessions/**/*.jsonl` while missing
+from the current sidebar when a client explicitly filters or the bundled
+backend regresses the default. Recover by using Chronological view, auditing all
+providers, and opening by thread ID. Never change `model_provider` merely for
+visibility.
 
 ## Product boundary
 
