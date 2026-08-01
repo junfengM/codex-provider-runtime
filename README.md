@@ -32,7 +32,7 @@ Codex 把模型名和 provider 分开保存。Desktop 模型下拉框可以显�
 新线程请求仍会省略 provider 或携带默认的 `openai`。手机 Remote 直接进入公共
 app-server 路径，因此仅在 Desktop stdin 前增加 JavaScript shim 无法覆盖手机请求。
 
-本项目只在 app-server 的 `thread/start` 入口执行窄路由：
+本项目在 app-server 的公共协议层维护两项互不干扰的兼容修复。新线程仍执行窄路由：
 
 ```text
 deepseek-v4-flash + provider 缺失/openai  → deepseek
@@ -41,6 +41,10 @@ GPT 模型                                 → 保持 OpenAI
 显式第三方 provider                      → 保持调用方选择
 旧线程/turn/start                 → 不修改
 ```
+
+`thread/list` 恢复官方协议语义：调用方未传 `modelProviders`、传 `null` 或传空数组时均
+返回全部交互式 Provider；显式传入 `openai` 或 `deepseek` 时仍严格过滤。这样 Desktop 和
+手机 Remote 从任意当前对话返回历史列表时，都不会把另一个 Provider 的对话隐藏。
 
 路由完成后，DeepSeek provider 的 Responses 请求直达官方接口：
 
@@ -71,12 +75,15 @@ cd codex-provider-runtime
 ./bin/codex-provider doctor --live
 ```
 
-可选安装全局命令和 Codex skill：
+可选安装全局命令和 Codex skills：
 
 ```bash
 ./bin/codex-provider link-cli
 ./bin/codex-provider skill-install
 ```
+
+`skill-install` 同步 `codex-model-coexist` 与 `codex-provider-runtime`，并把旧版本移动到安装
+目录下的可恢复备份，确保新发现进入后续诊断和升级流程。
 
 ## 常用命令
 
@@ -106,8 +113,12 @@ codex-provider uninstall
 ## 安全升级模型
 
 更新器读取客户端内置 Codex 版本，只获取完全匹配的 `rust-v<version>` 官方标签。补丁
-锚点、Cargo.lock、单元测试、两个 release 二进制、协议 smoke、版本号、签名和摘要全部
+锚点、Cargo.lock、路由/历史单元测试、两个 release 二进制、协议 smoke、版本号、签名和摘要全部
 通过后，才会原子切换 `current`。
+
+从仓库执行 `codex-provider update` 时会先暂停已加载的定时更新器并同步新版补丁资产，
+构建和验证结束后再重新加载。这样旧更新器无法在新 release 激活与支持文件同步之间把
+`current` 竞态切回旧补丁；后台定时更新仍直接使用已安装、已同步的管理器。
 
 若客户端版本与自定义发布不一致、精确标签尚未发布、源码结构改变或构建失败，稳定启动器
 会使用 ChatGPT.app 内置官方后端。它不会让旧自定义二进制冒充新版本。此时 GPT 继续可用，
@@ -122,8 +133,10 @@ codex-provider uninstall
    `model_provider = deepseek`；
 3. `appserver-smoke` 记录 `model_provider = deepseek`，产生真实 `commandExecution`，隐藏
    SHA-256 挑战与最终消息匹配；
-4. 没有认证、unsupported model、fallback 或旧 JavaScript router 错误；
-5. 实际 app-server 来自当前版本匹配的 `current/codex`。
+4. `thread/list` 省略 `modelProviders` 与传空数组返回相同线程集合，且显式 Provider 过滤
+   仍然有效；
+5. 没有认证、unsupported model、fallback 或旧 JavaScript router 错误；
+6. 实际 app-server 来自当前版本匹配的 `current/codex`。
 
 ## 开发
 
