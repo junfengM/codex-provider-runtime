@@ -174,7 +174,7 @@ case "${1:-help}" in
     logs)
         lines="${2:-100}"
         case "$lines" in *[!0-9]*|'') printf 'lines must be a positive integer\n' >&2; exit 2 ;; esac
-        for log_file in "$install_root/logs/gateway.log" "$install_root/logs/updater.log" "$install_root/logs/launcher.log"; do
+        for log_file in "$install_root/logs/updater.log" "$install_root/logs/launcher.log"; do
             if [ -f "$log_file" ]; then
                 printf '\n== %s ==\n' "$log_file"
                 tail -n "$lines" "$log_file"

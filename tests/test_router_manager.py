@@ -56,6 +56,19 @@ class PatchSourceTests(unittest.TestCase):
         self.assertIn("mod provider_route;", parent)
         self.assertIn(router_manager.CALL_MARKER, thread)
 
+    def test_updates_changed_patch_asset_in_an_existing_patched_tree(self) -> None:
+        source = self.root / "source"
+        self.assertEqual(router_manager.patch_source(source, self.patch_asset), "patched")
+        self.patch_asset.write_text(
+            "pub(super) fn updated_placeholder() {}\n", encoding="utf-8"
+        )
+        self.assertEqual(
+            router_manager.patch_source(source, self.patch_asset),
+            "updated-patch-asset",
+        )
+        installed = source / "codex-rs/app-server/src/request_processors/provider_route.rs"
+        self.assertEqual(installed.read_bytes(), self.patch_asset.read_bytes())
+
     def test_refuses_changed_anchor(self) -> None:
         source = self.root / "source"
         parent = source / "codex-rs/app-server/src/request_processors.rs"
@@ -109,17 +122,8 @@ class SupportMetadataTests(unittest.TestCase):
             Path("/Applications/ChatGPT.app/Contents/Resources/codex"),
             Path("/tmp/provider-runtime"),
         )
-        gateway = router_manager.plist_gateway(
-            Path("/tmp/deepseek_gateway.py"), Path("/tmp/provider-runtime")
-        )
         self.assertEqual(environment["Label"], "com.codex.provider-runtime.environment")
         self.assertEqual(updater["Label"], "com.codex.provider-runtime.updater")
-        self.assertEqual(
-            gateway["Label"], "com.codex.provider-runtime.deepseek-gateway"
-        )
-        self.assertEqual(gateway["ProgramArguments"][5], str(router_manager.GATEWAY_PORT))
-        self.assertEqual(gateway["ProgramArguments"][7], router_manager.DEEPSEEK_UPSTREAM)
-        self.assertTrue(gateway["KeepAlive"])
         self.assertIn("/tmp/provider-runtime", updater["ProgramArguments"])
 
     def test_legacy_agent_names_cover_previous_installations(self) -> None:

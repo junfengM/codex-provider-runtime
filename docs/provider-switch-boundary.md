@@ -45,7 +45,7 @@ already accepts `modelProvider`. A version-matched local build of the open-sourc
 app-server can therefore make all new-thread entry points provider-aware without
 modifying the signed app:
 
-- normalize `deepseek-*` to provider `deepseek` inside the shared `thread/start`
+- normalize only `deepseek-v4-flash` to provider `deepseek` inside the shared `thread/start`
   handler when the provider is missing or `openai`;
 - leave GPT new threads on the default OpenAI provider;
 - preserve explicit third-party providers;
