@@ -4,7 +4,7 @@
 
 ```text
 Desktop / phone Remote
-          │ thread/start
+          │ thread/start / thread/list
           ▼
 stable CODEX_CLI_PATH launcher
           │ exact version gate
@@ -14,6 +14,8 @@ versioned patched Codex app-server
           │ model prefix normalization
           ├── GPT ───────────────────────────► OpenAI provider
           └── deepseek-v4-flash ─────────────► DeepSeek native Responses
+
+thread/list without modelProviders ──────────► all interactive providers
 ```
 
 The stable launcher is the only path stored in the GUI login environment. It
@@ -35,10 +37,15 @@ moved to recoverable backups during activation.
 
 ## Patch policy
 
-The Rust patch is deliberately provider-specific and new-thread-only. It
-changes a missing or default OpenAI provider to `deepseek` only when the model
-is exactly `deepseek-v4-flash`. Explicit non-default providers, unintegrated
-DeepSeek models, and GPT models pass through unchanged.
+The Rust patch keeps model routing deliberately provider-specific and
+new-thread-only. It changes a missing or default OpenAI provider to `deepseek`
+only when the model is exactly `deepseek-v4-flash`. Explicit non-default
+providers, unintegrated DeepSeek models, and GPT models pass through unchanged.
+
+The same versioned patch restores the public `thread/list` contract: omitted,
+null, and empty `modelProviders` filters mean all providers. Explicit provider
+filters remain authoritative. Source-kind defaults stay untouched, so internal
+subagent and review threads are not added to normal Desktop or phone history.
 
 If more providers are added later, prefer a reviewed data-driven route table
 over accumulating model-name conditions in the handler. Keep the current narrow
@@ -47,8 +54,9 @@ policy until a second provider creates a real generalization requirement.
 ## Upgrade contract
 
 Activation requires an exact bundled-version/public-tag match, fixed patch
-anchors, locked dependency proof, provider-route tests, release builds of both
-required binaries, protocol smoke, checksums, and an atomic symlink switch.
+anchors, locked dependency proof, provider-route and thread-list tests, release
+builds of both required binaries, protocol smoke, checksums, and an atomic
+symlink switch.
 
 Structural upstream changes are a supported failure state. The updater must
 stop and retain evidence; the launcher must use the official backend until a
@@ -57,6 +65,11 @@ human-reviewed patch update passes the same contract.
 The updater rebuilds only the version-coupled app-server patch after a Desktop
 upgrade. Model-catalog refresh is separate and validates the current official
 DeepSeek Flash Codex contract before activation.
+
+Repository-driven install/update first unloads the scheduled updater, copies
+the new manager and patch asset, builds and certifies the release, and only then
+reloads support. This ordering prevents an updater holding a superseded patch
+asset from racing the final `current` symlink back to an older release.
 
 ## Native protocol
 

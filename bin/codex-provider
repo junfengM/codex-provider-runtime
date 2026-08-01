@@ -131,9 +131,9 @@ case "${1:-help}" in
         prerequisites
         self_test
         bash "$config_tool" enable-both
+        manager_run install-support
         manager_run update
         manager_run smoke --binary "$install_root/current/codex"
-        manager_run install-support
         manager_run activate-support
         printf '\nInstalled. Fully quit and reopen ChatGPT/Codex Desktop, then run doctor --live.\n'
         ;;
@@ -145,11 +145,19 @@ case "${1:-help}" in
         doctor "${2:-}"
         ;;
     update)
+        manager_run install-support
         manager_run update
+        manager_run activate-support
         ;;
     verify)
-        bash "$config_tool" validate
-        manager_run smoke --binary "$install_root/current/codex"
+        verify_failed=0
+        if ! bash "$config_tool" validate; then
+            verify_failed=1
+        fi
+        if ! manager_run smoke --binary "$install_root/current/codex"; then
+            verify_failed=1
+        fi
+        exit "$verify_failed"
         ;;
     appserver-smoke)
         manager_run app-server-live-smoke \
@@ -197,11 +205,21 @@ case "${1:-help}" in
         printf 'Linked %s\n' "$destination"
         ;;
     skill-install)
-        source_skill="$project_root/integrations/codex-skill/codex-provider-runtime"
-        target_skill="${CODEX_HOME:-$HOME/.codex}/skills/codex-provider-runtime"
-        mkdir -p "$(dirname "$target_skill")"
-        /usr/bin/ditto "$source_skill" "$target_skill"
-        printf 'Installed optional skill: %s\n' "$target_skill"
+        skill_root="${CODEX_HOME:-$HOME/.codex}/skills"
+        backup_root="$install_root/backups/skills"
+        timestamp="$(date +%Y%m%d-%H%M%S)"
+        mkdir -p "$skill_root" "$backup_root"
+        for skill_name in codex-model-coexist codex-provider-runtime; do
+            source_skill="$project_root/integrations/codex-skill/$skill_name"
+            target_skill="$skill_root/$skill_name"
+            if [ -d "$target_skill" ]; then
+                backup_skill="$backup_root/$skill_name.$timestamp"
+                mv "$target_skill" "$backup_skill"
+                printf 'Backed up previous skill: %s\n' "$backup_skill"
+            fi
+            /usr/bin/ditto "$source_skill" "$target_skill"
+            printf 'Installed optional skill: %s\n' "$target_skill"
+        done
         ;;
     *)
         printf 'Unknown command: %s\n\n' "$1" >&2

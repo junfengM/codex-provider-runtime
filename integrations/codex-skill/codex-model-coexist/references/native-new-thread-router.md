@@ -19,6 +19,8 @@ The reusable `codex-provider-runtime` project owns:
 - the narrow model-to-provider Rust policy;
 - a stable `CODEX_CLI_PATH` launcher;
 - catalog/provider reconciliation and live acceptance tests.
+- the App Server `thread/list` all-provider default required for shared Desktop
+  and phone Remote history.
 
 The active install is under `~/.codex/deepseek-native-router/`. Current generic
 LaunchAgents are:
@@ -36,13 +38,19 @@ Require all of the following before activation:
 1. Match the bundled Codex version to the exact public source tag.
 2. Stop on patch-anchor or source-structure drift.
 3. Allow lockfile normalization only for local workspace version changes.
-4. Run provider-route unit tests, including a negative test for every visible
-   but unsupported model family.
+4. Run provider-route and thread-list unit tests, including a negative test for
+   every visible but unsupported model family.
 5. Build the required Codex binaries with the pinned toolchain and lockfile.
 6. Record official binary, patch asset, source commit, and custom binary hashes.
-7. Run protocol smoke tests for both DeepSeek Flash and GPT routing.
+7. Run protocol smoke tests for both DeepSeek Flash/GPT routing and omitted
+   versus empty all-provider history.
 8. Run a live App Server tool loop against the currently documented endpoint.
 9. Atomically activate only after all checks pass.
+
+For a repository-driven patch update, unload the scheduled updater and install
+the new manager/asset before building. Reload it only after the new release is
+certified and active; otherwise a still-loaded old updater can race `current`
+back to the superseded patch.
 
 The stable launcher must use the official bundled backend on version mismatch,
 missing release, disabled state, or failed rebuild. Never use an old custom
@@ -58,6 +66,8 @@ Do not infer routing from the picker. Confirm:
 - Desktop Flash rollout uses `model = deepseek-v4-flash` and
   `model_provider = deepseek`;
 - phone Remote has the same pairing when remote access is in scope;
+- `thread/list` without `modelProviders` includes the same interactive threads
+  as an empty all-provider filter, while explicit filters remain exact;
 - a structured shell command executes and its hidden result is independently
   verified;
 - no authentication, unsupported-model, fallback, or retired-service error is

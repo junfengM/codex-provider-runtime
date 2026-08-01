@@ -6,6 +6,7 @@ Desktop or a new phone Remote thread.
 | Capability | Status | Adapter behavior |
 |---|---|---|
 | New-thread provider routing | Supported | Only `deepseek-v4-flash` becomes provider `deepseek` in shared `thread/start`. |
+| Cross-provider history visibility | Supported | Omitted/null/empty `modelProviders` lists all interactive providers; explicit filters remain exact. |
 | Text and streaming output | Supported | Direct DeepSeek native Responses SSE. |
 | Thinking mode | Supported | Official catalog exposes `low`/`high`/`max`. |
 | Standard function/shell tools | Supported | Native Responses items are dispatched by Codex without translation. |
@@ -25,7 +26,9 @@ Desktop or a new phone Remote thread.
 ## Validation evidence
 
 `codex-provider test-deepseek` proves the local CLI route and a real shell tool
-round trip. `codex-provider appserver-smoke` starts an ephemeral public
+round trip. The normal runtime protocol smoke compares omitted and empty
+`modelProviders` pages and checks the explicit DeepSeek filter.
+`codex-provider appserver-smoke` starts an ephemeral public
 app-server thread, verifies provider `deepseek`, executes a hidden random-file
 SHA-256 challenge through `shell_command`, observes `commandExecution`, and compares
 the final message with the independently calculated hash.
@@ -42,3 +45,4 @@ Responses support for it and live acceptance passes.
 - https://api-docs.deepseek.com/quick_start/agent_integrations/codex/
 - https://api-docs.deepseek.com/guides/responses_api/
 - https://api-docs.deepseek.com/updates/
+- https://developers.openai.com/codex/app-server/

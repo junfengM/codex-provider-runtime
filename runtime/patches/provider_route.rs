@@ -1,8 +1,8 @@
 // This file is injected into codex-app-server by router_manager.py.
 // Integrated model contract: DeepSeek V4 Flash-0731 only.
-// Keep the policy deliberately narrow: only new V4 Flash threads whose caller
-// omitted a provider (or incorrectly supplied the ChatGPT default provider)
-// are redirected. Explicit third-party providers remain authoritative.
+// Keep the routing policy deliberately narrow: only new V4 Flash threads whose
+// caller omitted a provider (or incorrectly supplied the ChatGPT default
+// provider) are redirected. Explicit third-party providers remain authoritative.
 pub(super) fn model_provider_for_new_thread(
     model: Option<&str>,
     model_provider: Option<String>,
@@ -17,8 +17,19 @@ pub(super) fn model_provider_for_new_thread(
     }
 }
 
+// App Server's public thread/list contract says an omitted, null, or empty
+// modelProviders filter includes every provider. Some bundled builds instead
+// default an omitted filter to the configured provider, which hides valid
+// third-party threads from Desktop and phone Remote history views.
+pub(super) fn model_provider_filter_for_thread_list(
+    model_providers: Option<Vec<String>>,
+) -> Option<Vec<String>> {
+    model_providers.filter(|providers| !providers.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
+    use super::model_provider_filter_for_thread_list;
     use super::model_provider_for_new_thread;
 
     #[test]
@@ -74,6 +85,24 @@ mod tests {
                 Some("openai".to_string())
             ),
             Some("openai".to_string())
+        );
+    }
+
+    #[test]
+    fn omitted_thread_list_filter_includes_all_providers() {
+        assert_eq!(model_provider_filter_for_thread_list(None), None);
+    }
+
+    #[test]
+    fn empty_thread_list_filter_includes_all_providers() {
+        assert_eq!(model_provider_filter_for_thread_list(Some(Vec::new())), None);
+    }
+
+    #[test]
+    fn explicit_thread_list_filter_remains_authoritative() {
+        assert_eq!(
+            model_provider_filter_for_thread_list(Some(vec!["deepseek".to_string()])),
+            Some(vec!["deepseek".to_string()])
         );
     }
 }

@@ -71,6 +71,9 @@ Last verified: 2026-08-01.
   selected cost/performance policy.
 - Keep the retired loopback gateway unloaded. It is not part of the current
   request path.
+- Preserve official `thread/list` semantics: omitted, null, or empty
+  `modelProviders` includes all interactive providers; explicit filters remain
+  authoritative.
 
 This baseline is dated evidence, not a permanent prohibition. When official
 support changes, re-run the upstream-contract workflow and replace this section
