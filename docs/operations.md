@@ -18,9 +18,8 @@ equivalent is:
 ```
 
 The second command creates an ephemeral app-server thread, routes it to
-DeepSeek, asks Code Mode to hash a hidden random file through
-`tools.exec_command`, and requires the final message to match the locally
-calculated hash.
+DeepSeek, asks the official `shell_command` tool to hash a hidden random file,
+and requires the final message to match the locally calculated hash.
 
 ## Routine health check
 
@@ -31,8 +30,6 @@ calculated hash.
 ```
 
 Use `doctor --live` only when one ephemeral paid API request is appropriate.
-`logs` includes `gateway.log`; the gateway records health/request status only,
-not prompts, responses, arguments, or Authorization headers.
 
 ## Desktop upgrade
 
@@ -47,9 +44,14 @@ Manual reconciliation is safe and idempotent:
 Restart Desktop after a new release is activated. Verify actual rollout
 provider metadata; do not rely on the picker label.
 
-The gateway LaunchAgent is version-independent. The updater rebuilds the exact
-Codex tag only when the bundled backend changes, then the stable launcher
-atomically adopts the matching release.
+The updater rebuilds the exact Codex tag only when the bundled backend changes,
+then the stable launcher atomically adopts the matching release. DeepSeek Flash
+continues to use the official native Responses endpoint directly.
+
+After a DeepSeek API/model announcement, compare the official Codex integration
+page and setup script with `docs/compatibility.md`, then run
+`./bin/codex-provider configure` and the two live smoke tests. Catalog
+validation fails closed if the known V4-Flash-0731 compatibility fields drift.
 
 ## Emergency fallback
 
@@ -87,7 +89,7 @@ Collect without secrets:
 - bundled and current manifest versions/checksums;
 - affected rollout `session_meta.model_provider` and turn model;
 - structured error event types.
-- gateway health (`status = ok`) and LaunchAgent state.
+- configured DeepSeek base URL and loaded Flash model metadata.
 
 Do not attach full prompts, responses, `auth.json`, `config.toml`, Keychain
 output, or entire rollout files to an issue.

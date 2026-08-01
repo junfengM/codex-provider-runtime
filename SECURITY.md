@@ -11,13 +11,7 @@ compiled Codex binaries, or local model catalogs.
 - Run `make check` before every push. The check rejects common credential
   patterns and known local-state filenames.
 
-The native patch changes only new-thread provider normalization. The DeepSeek
-protocol gateway binds only to `127.0.0.1:17892`; it necessarily relays prompts,
-tool schemas/results, streamed responses, and the command-backed bearer header
-to `https://api.deepseek.com`. It does not persist or log headers, bodies,
-prompts, responses, tool arguments, or credentials. Operational logs contain
-only startup, health, and HTTP method/path/status metadata.
-
-Any local process running as the same macOS user is already inside the user's
-trust boundary and can connect to the loopback port. Do not bind the gateway to
-LAN/WAN addresses; the executable refuses non-loopback hosts.
+The native patch changes only new-thread provider normalization. DeepSeek V4
+Flash uses Codex's normal HTTPS Responses client to connect directly to
+`https://api.deepseek.com`; this project does not proxy prompts, responses,
+tools, or credentials. The API key remains command-backed from macOS Keychain.

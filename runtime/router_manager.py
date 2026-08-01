@@ -12,7 +12,6 @@ import argparse
 import datetime as dt
 import fcntl
 import hashlib
-import http.client
 import json
 import os
 import plistlib
@@ -35,11 +34,9 @@ MODULE_MARKER = "mod provider_route;"
 CALL_MARKER = "model_provider_for_new_thread(model.as_deref(), model_provider)"
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
-GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
-GATEWAY_HOST = "127.0.0.1"
-GATEWAY_PORT = 17892
-DEEPSEEK_UPSTREAM = "https://api.deepseek.com"
+RETIRED_GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
 LEGACY_SUPPORT_NAMES = {
+    f"{RETIRED_GATEWAY_LABEL}.plist",
     "com.dudu.codex-deepseek-router-environment.plist",
     "com.dudu.codex-deepseek-router-updater.plist",
     "com.example.codex-provider-router.plist",
@@ -125,7 +122,10 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
         and destination.is_file()
     )
     if already_patched:
-        return "already-patched"
+        if destination.read_bytes() == patch_asset.read_bytes():
+            return "already-patched"
+        shutil.copy2(patch_asset, destination)
+        return "updated-patch-asset"
     if MODULE_MARKER in parent_text or CALL_MARKER in thread_text or destination.exists():
         raise RouterError("Source contains a partial router patch; refusing mixed state")
 
@@ -429,15 +429,9 @@ def app_server_deepseek_tool_smoke(binary: Path, cwd: Path) -> dict:
         challenge_path.write_bytes(challenge)
         expected_hash = hashlib.sha256(challenge).hexdigest()
         command = f"shasum -a 256 {challenge_path}"
-        javascript = (
-            "const r = await tools.exec_command("
-            + json.dumps({"cmd": command}, separators=(",", ":"))
-            + "); text(r.output);"
-        )
         prompt = (
-            "You must call the top-level exec Code Mode tool with JavaScript source. "
-            "Do not call node_repl or node_repl/js. The JavaScript must be exactly: "
-            f"{javascript} After the tool result, reply with only the first whitespace-separated "
+            "You must use the available shell execution tool to run exactly this command: "
+            f"{command} After the tool result, reply with only the first whitespace-separated "
             "field from the command output. Do not guess or compute it yourself."
         )
         stderr_path = temporary_path / "stderr.log"
@@ -670,8 +664,11 @@ def build_release(
     del non_interactive  # Reserved for future notification policy; builds are always deterministic.
     version = codex_version(official_codex)
     official_digest = sha256(official_codex)
+    patch_digest = sha256(patch_asset)
     source, tag, commit = ensure_source_checkout(install_root, version)
-    release_name = f"{version}-{commit[:12]}-{official_digest[:12]}"
+    release_name = (
+        f"{version}-{commit[:12]}-{official_digest[:12]}-{patch_digest[:12]}"
+    )
     release = install_root / "releases" / release_name
 
     if release.is_dir():
@@ -683,6 +680,7 @@ def build_release(
             "codex_version": version,
             "source_commit": commit,
             "official_sha256": official_digest,
+            "patch_sha256": patch_digest,
         }
         if any(manifest.get(key) != value for key, value in expected.items()):
             raise RouterError(f"Existing release manifest does not match: {release}")
@@ -744,9 +742,10 @@ def build_release(
         "source_commit": commit,
         "official_binary": os.fspath(official_codex),
         "official_sha256": official_digest,
+        "patch_sha256": patch_digest,
         "custom_sha256": sha256(staging / "codex"),
         "code_mode_host_sha256": sha256(staging / "codex-code-mode-host"),
-        "patch": "new-thread-deepseek-provider-route-v1",
+        "patch": "new-thread-deepseek-flash-route-v2",
         "built_at": utc_now(),
         "workspace_lock_versions_normalized": lock_versions_normalized,
         "protocol_smoke": smoke_result,
@@ -823,48 +822,6 @@ def plist_updater(manager: Path, official_codex: Path, install_root: Path) -> di
     }
 
 
-def plist_gateway(gateway: Path, install_root: Path) -> dict:
-    return {
-        "Label": GATEWAY_LABEL,
-        "ProgramArguments": [
-            "/usr/bin/python3",
-            os.fspath(gateway),
-            "--host",
-            GATEWAY_HOST,
-            "--port",
-            str(GATEWAY_PORT),
-            "--upstream",
-            DEEPSEEK_UPSTREAM,
-        ],
-        "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},
-        "RunAtLoad": True,
-        "KeepAlive": True,
-        "ThrottleInterval": 5,
-        "ProcessType": "Interactive",
-        "Umask": 63,
-        "StandardOutPath": os.fspath(install_root / "logs" / "gateway.log"),
-        "StandardErrorPath": os.fspath(install_root / "logs" / "gateway.log"),
-    }
-
-
-def gateway_health(timeout: float = 1.0) -> dict:
-    connection = http.client.HTTPConnection(GATEWAY_HOST, GATEWAY_PORT, timeout=timeout)
-    try:
-        connection.request("GET", "/healthz", headers={"Accept": "application/json"})
-        response = connection.getresponse()
-        body = response.read(64 * 1024)
-        if response.status != 200:
-            raise RouterError(f"DeepSeek gateway health returned HTTP {response.status}")
-        payload = json.loads(body)
-        if payload.get("status") != "ok":
-            raise RouterError("DeepSeek gateway health payload is not ok")
-        return payload
-    except (OSError, http.client.HTTPException, json.JSONDecodeError) as error:
-        raise RouterError(f"DeepSeek gateway is unavailable: {error}") from error
-    finally:
-        connection.close()
-
-
 def install_support(project_root: Path, install_root: Path, official_codex: Path) -> None:
     lib = install_root / "lib"
     bin_dir = install_root / "bin"
@@ -872,7 +829,6 @@ def install_support(project_root: Path, install_root: Path, official_codex: Path
     for directory in (lib / "patches", lib / "templates", bin_dir, logs):
         directory.mkdir(parents=True, exist_ok=True)
     shutil.copy2(project_root / "router_manager.py", lib / "router_manager.py")
-    shutil.copy2(project_root / "deepseek_gateway.py", lib / "deepseek_gateway.py")
     shutil.copy2(
         project_root / "patches" / "provider_route.rs",
         lib / "patches" / "provider_route.rs",
@@ -888,9 +844,6 @@ def install_support(project_root: Path, install_root: Path, official_codex: Path
     agents = Path.home() / "Library" / "LaunchAgents"
     agents.mkdir(parents=True, exist_ok=True)
     definitions = {
-        agents / f"{GATEWAY_LABEL}.plist": plist_gateway(
-            lib / "deepseek_gateway.py", install_root
-        ),
         agents / f"{ENVIRONMENT_LABEL}.plist": plist_environment(launcher),
         agents / f"{UPDATER_LABEL}.plist": plist_updater(
             lib / "router_manager.py", official_codex, install_root
@@ -942,26 +895,12 @@ def activate_support(project_root: Path, install_root: Path, official_codex: Pat
     agents = Path.home() / "Library" / "LaunchAgents"
     environment_agent = agents / f"{ENVIRONMENT_LABEL}.plist"
     updater_agent = agents / f"{UPDATER_LABEL}.plist"
-    gateway_agent = agents / f"{GATEWAY_LABEL}.plist"
     for label, path in (
-        (GATEWAY_LABEL, gateway_agent),
         (ENVIRONMENT_LABEL, environment_agent),
         (UPDATER_LABEL, updater_agent),
     ):
         launchctl_allow_failure(["bootout", f"{domain}/{label}"])
         run(["/bin/launchctl", "bootstrap", domain, path])
-
-    last_gateway_error: Optional[Exception] = None
-    for _ in range(20):
-        try:
-            health = gateway_health()
-            print("DeepSeek gateway health:", json.dumps(health, sort_keys=True))
-            break
-        except RouterError as error:
-            last_gateway_error = error
-            time.sleep(0.25)
-    else:
-        raise RouterError(str(last_gateway_error or "DeepSeek gateway failed to start"))
 
     launcher = install_root / "bin" / "codex-router"
     run(["/bin/launchctl", "setenv", "CODEX_CLI_PATH", launcher])
@@ -1036,9 +975,6 @@ def status(install_root: Path, official_codex: Path) -> int:
     payload["legacy_cli_path_agents"] = legacy_cli_path_agents()
     payload["legacy_support_agents"] = legacy_support_agents()
     payload["support_agents"] = {
-        "deepseek_gateway": os.fspath(
-            Path.home() / "Library" / "LaunchAgents" / f"{GATEWAY_LABEL}.plist"
-        ),
         "environment": os.fspath(
             Path.home() / "Library" / "LaunchAgents" / f"{ENVIRONMENT_LABEL}.plist"
         ),
@@ -1050,16 +986,11 @@ def status(install_root: Path, official_codex: Path) -> int:
         payload["cargo"] = os.fspath(find_cargo())
     except RouterError:
         payload["cargo"] = None
-    try:
-        payload["deepseek_gateway"] = gateway_health()
-    except RouterError as error:
-        payload["deepseek_gateway"] = {"status": "unavailable", "error": str(error)}
     payload["router_will_activate"] = bool(
         not disabled
         and manifest
         and manifest.get("codex_version") == payload.get("official_version")
         and (install_root / "current" / "codex").is_file()
-        and payload["deepseek_gateway"].get("status") == "ok"
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0 if payload["router_will_activate"] else 1
@@ -1090,7 +1021,7 @@ def uninstall_support(install_root: Path) -> None:
     backups.mkdir(parents=True, exist_ok=True)
     timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    for label in (GATEWAY_LABEL, ENVIRONMENT_LABEL, UPDATER_LABEL):
+    for label in (RETIRED_GATEWAY_LABEL, ENVIRONMENT_LABEL, UPDATER_LABEL):
         launchctl_allow_failure(["bootout", f"{domain}/{label}"])
         path = agents / f"{label}.plist"
         if path.is_file():

@@ -13,13 +13,7 @@ stable CODEX_CLI_PATH launcher
 versioned patched Codex app-server
           │ model prefix normalization
           ├── GPT ───────────────────────────► OpenAI provider
-          └── deepseek-* ─► loopback Responses gateway
-                               │ protocol translation
-                               ▼
-                         DeepSeek Chat Completions
-                               │ structured stream
-                               ▼
-                         Codex tool execution loop
+          └── deepseek-v4-flash ─────────────► DeepSeek native Responses
 ```
 
 The stable launcher is the only path stored in the GUI login environment. It
@@ -30,9 +24,8 @@ user name or one fixed state directory.
 
 The repository contains only reusable source, tests, documentation, and an
 optional skill. `router_manager.py install-support` copies the minimum runtime
-assets into the chosen install root and creates three generic LaunchAgents:
+assets into the chosen install root and creates two generic LaunchAgents:
 
-- `com.codex.provider-runtime.deepseek-gateway`
 - `com.codex.provider-runtime.environment`
 - `com.codex.provider-runtime.updater`
 
@@ -44,8 +37,8 @@ moved to recoverable backups during activation.
 
 The Rust patch is deliberately provider-specific and new-thread-only. It
 changes a missing or default OpenAI provider to `deepseek` only when the model
-starts with `deepseek-`. Explicit non-default providers and GPT models pass
-through unchanged.
+is exactly `deepseek-v4-flash`. Explicit non-default providers, unintegrated
+DeepSeek models, and GPT models pass through unchanged.
 
 If more providers are added later, prefer a reviewed data-driven route table
 over accumulating model-name conditions in the handler. Keep the current narrow
@@ -61,24 +54,24 @@ Structural upstream changes are a supported failure state. The updater must
 stop and retain evidence; the launcher must use the official backend until a
 human-reviewed patch update passes the same contract.
 
-The gateway is independent of the Rust release and is copied into the install
-root whenever support is activated. The updater continues to rebuild only the
-version-coupled app-server patch after a Desktop upgrade; the loopback gateway
-and its LaunchAgent remain stable across those rebuilds.
+The updater rebuilds only the version-coupled app-server patch after a Desktop
+upgrade. Model-catalog refresh is separate and validates the current official
+DeepSeek Flash Codex contract before activation.
 
-## Protocol adapter
+## Native protocol
 
-Current Codex custom providers emit only the Responses wire protocol, while
-DeepSeek's structured tools are exposed through Chat Completions. The loopback
-gateway translates both directions and keeps the Codex core tool loop intact:
+Codex custom providers emit the Responses wire protocol. DeepSeek
+V4-Flash-0731 supports that protocol natively and is specifically documented
+for Codex, so requests go directly from Codex to `https://api.deepseek.com`.
+There is no local protocol translation or prompt/response proxy.
 
-- developer/user/assistant/tool messages and tool call ids;
-- raw `reasoning_content` required by DeepSeek after a thinking-mode tool call;
-- function, namespace, tool-search, and freeform tools;
-- Code Mode `exec` raw JavaScript and common argument aliases;
-- output text, reasoning deltas, tool calls, usage, incomplete responses, and
-  retryable resource failures;
-- internal `codex-auto-review` to `deepseek-v4-pro` mapping.
+The model catalog sets `auto_review_model_override` to
+`deepseek-v4-flash`. This lets Codex choose Flash directly and use its supported
+`low` reasoning effort for the reviewer.
+
+V4 Pro is deliberately absent from the catalog. It can be reconsidered after
+DeepSeek officially releases native Responses/Codex support and the same live
+tool-loop acceptance checks pass.
 
 The non-OpenAI provider automatically uses Codex local compaction, so it never
 depends on OpenAI's private `/responses/compact` response format.
@@ -87,8 +80,7 @@ depends on OpenAI's private `/responses/compact` response format.
 
 - ChatGPT authentication remains owned by the official Codex flow.
 - DeepSeek authentication is command-backed from macOS Keychain.
-- The bearer credential passes only from Codex to a loopback listener and then
-  to `https://api.deepseek.com`; the gateway never prints headers or bodies.
+- Codex sends the bearer credential directly to `https://api.deepseek.com`.
 - The runtime never stores API Key values in manifests or logs.
 - Rollout metadata is read for validation but never rewritten.
 - The project never modifies or re-signs `ChatGPT.app`.

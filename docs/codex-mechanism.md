@@ -80,7 +80,8 @@ large, stale prompt in the skill.
 
 A complete validation has three separate checks:
 
-1. `codex debug models` contains both `gpt-*` and `deepseek-*`.
+1. `codex debug models` contains both `gpt-*` and `deepseek-v4-flash`, and no
+   unintegrated DeepSeek model.
 2. ChatGPT login is still configured and forced API-only auth is absent.
 3. An ephemeral CLI request executes a real shell tool and returns
    `CODEX_DEEPSEEK_TOOL_OK`.
@@ -118,7 +119,8 @@ native support.
 
 For separate new chats, the installed Desktop build exposes a narrower local
 hook: `CODEX_CLI_PATH`. This project uses it to select a version-matched local
-app-server build whose shared `thread/start` handler normalizes `deepseek-*` to
+app-server build whose shared `thread/start` handler normalizes only
+`deepseek-v4-flash` to
 the DeepSeek provider. Desktop and phone Remote both enter that handler. It
 does not alter `turn/start`, so it is not same-thread switching. See
 [architecture.md](architecture.md).
@@ -136,5 +138,5 @@ does not alter `turn/start`, so it is not same-thread switching. See
   updating the Codex app or DeepSeek integration.
 - DeepSeek V4 is configured as text-only. Image/audio input is rejected with a
   clear modality error instead of being silently discarded.
-- DeepSeek accepts at most 128 functions. The gateway fails explicitly when
-  the expanded Codex/MCP tool set exceeds that upstream limit.
+- DeepSeek accepts at most 128 functions. Keep the expanded Codex/MCP tool set
+  within that upstream limit.

@@ -1,12 +1,12 @@
 # Codex Provider Runtime
 
 Codex Provider Runtime 是一个 macOS 本地运行时扩展。它让 Codex Desktop 和手机 Remote
-在新建 `deepseek-*` 对话时使用 DeepSeek provider，同时保留 ChatGPT 登录、GPT 模型和
+在新建 `deepseek-v4-flash` 对话时使用 DeepSeek provider，同时保留 ChatGPT 登录、GPT 模型和
 OpenAI provider。
 
-当前版本聚焦 DeepSeek V4 Flash/Pro。它不修改或重新签名 `ChatGPT.app`，不重写历史会话
-provider，也不支持在同一旧对话中跨 provider 切换。DeepSeek 请求会经过只绑定
-`127.0.0.1` 的本机协议网关，在 Codex Responses 与 DeepSeek Chat Completions 之间转换。
+当前版本只接入 DeepSeek V4 Flash-0731。它不修改或重新签名 `ChatGPT.app`，不重写历史
+会话 provider，也不支持在同一旧对话中跨 provider 切换。Flash 通过 DeepSeek 官方原生
+Responses API 直连；V4 Pro 在原生 Codex 支持正式发布前不加入模型目录。
 
 ## 工程形态
 
@@ -16,8 +16,8 @@ provider，也不支持在同一旧对话中跨 provider 切换。DeepSeek 请�
 codex-provider-runtime/
 ├── bin/codex-provider       # 统一生命周期 CLI
 ├── config/coexist.sh        # ChatGPT/DeepSeek 配置与模型目录管理
-├── runtime/                 # 版本构建器、原生补丁、启动器和 DeepSeek 协议网关
-├── tests/                   # CLI、补丁、网关协议和升级不变量测试
+├── runtime/                 # 版本构建器、原生补丁和稳定启动器
+├── tests/                   # CLI、补丁、模型契约和升级不变量测试
 ├── docs/                    # 架构、运维和协议边界
 └── integrations/codex-skill # 可选的 Codex 操作入口
 ```
@@ -35,20 +35,19 @@ app-server 路径，因此仅在 Desktop stdin 前增加 JavaScript shim 无法�
 本项目只在 app-server 的 `thread/start` 入口执行窄路由：
 
 ```text
-deepseek-* + provider 缺失/openai  → deepseek
-GPT 模型                          → 保持 OpenAI
-显式第三方 provider               → 保持调用方选择
+deepseek-v4-flash + provider 缺失/openai  → deepseek
+其他模型（包括尚未接入的 DeepSeek）      → 不改路由
+GPT 模型                                 → 保持 OpenAI
+显式第三方 provider                      → 保持调用方选择
 旧线程/turn/start                 → 不修改
 ```
 
-路由完成后，DeepSeek provider 的 Responses 请求进入本机网关：
+路由完成后，DeepSeek provider 的 Responses 请求直达官方接口：
 
 ```text
-Codex Responses request
-  → messages/reasoning/tools 转为 DeepSeek Chat Completions
-  → DeepSeek reasoning_content/tool_calls/content 流
-  → Codex Responses SSE items
-  → Codex 执行工具并把结果送入下一轮
+Codex Responses request → https://api.deepseek.com/responses
+
+codex-auto-review → deepseek-v4-flash（low effort）
 ```
 
 ## 快速开始

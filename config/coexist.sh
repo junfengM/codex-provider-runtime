@@ -25,7 +25,7 @@ CACHE="$CODEX_DIR/models_cache.json"
 CUSTOM="$CODEX_DIR/models.json"
 COEXIST="$CODEX_DIR/models-coexist.json"
 BACKUP_DIR="$CODEX_DIR/backup-coexist"
-DEEPSEEK_GATEWAY_URL="${DEEPSEEK_GATEWAY_URL:-http://127.0.0.1:17892}"
+DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
 DEEPSEEK_KEYCHAIN_SERVICE="${DEEPSEEK_KEYCHAIN_SERVICE:-com.openai.codex.deepseek-api-key}"
 DEEPSEEK_KEYCHAIN_ACCOUNT="${DEEPSEEK_KEYCHAIN_ACCOUNT:-$(id -un)}"
 
@@ -130,10 +130,10 @@ deepseek_provider_value() {
   ' "$CONFIG"
 }
 
-reconcile_deepseek_gateway_url() {
+reconcile_deepseek_base_url() {
   local tmp
   tmp="$(mktemp)"
-  awk -v url="$DEEPSEEK_GATEWAY_URL" '
+  awk -v url="$DEEPSEEK_BASE_URL" '
     BEGIN { in_provider = 0; wrote = 0 }
     /^\[model_providers\.deepseek\]$/ {
       in_provider = 1
@@ -188,7 +188,7 @@ keychain_set() {
 ensure_deepseek_provider() {
   require_config
   if has_deepseek_provider; then
-    reconcile_deepseek_gateway_url
+    reconcile_deepseek_base_url
     return
   fi
 
@@ -201,7 +201,7 @@ ensure_deepseek_provider() {
 
 [model_providers.deepseek]
 name = "DeepSeek"
-base_url = "$DEEPSEEK_GATEWAY_URL"
+base_url = "$DEEPSEEK_BASE_URL"
 wire_api = "responses"
 
 [model_providers.deepseek.auth]
@@ -215,7 +215,7 @@ EOF
 
 [model_providers.deepseek]
 name = "DeepSeek"
-base_url = "$DEEPSEEK_GATEWAY_URL"
+base_url = "$DEEPSEEK_BASE_URL"
 wire_api = "responses"
 env_key = "DEEPSEEK_API_KEY"
 env_key_instructions = "Set DEEPSEEK_API_KEY before starting Codex."
@@ -228,6 +228,27 @@ EOF
   mv "$tmp" "$CONFIG"
   chmod 0600 "$CONFIG"
   info "已注册 DeepSeek provider（密钥未写入 config.toml）。"
+}
+
+deepseek_catalog_matches_current_contract() {
+  local catalog="$1"
+  jq -e '
+    ([.models[] | select(.slug == "deepseek-v4-flash")][0]) as $flash
+    | ($flash != null)
+      and ([.models[] | select(.slug == "deepseek-v4-pro")] | length == 0)
+      and ($flash.context_window == 1048576)
+      and ($flash.max_context_window == 1048576)
+      and ($flash.support_verbosity == true)
+      and ($flash.apply_patch_tool_type == "freeform")
+      and ($flash.web_search_tool_type == "text")
+      and ($flash.supports_parallel_tool_calls == true)
+      and ($flash.tool_mode == null)
+      and ($flash.use_responses_lite == false)
+      and ($flash.shell_type == "shell_command")
+      and ($flash.supports_search_tool == true)
+      and ($flash.auto_review_model_override == "deepseek-v4-flash")
+      and ([$flash.supported_reasoning_levels[].effort] == ["low", "high", "max"])
+  ' "$catalog" >/dev/null
 }
 
 derive_deepseek_catalog() {
@@ -243,40 +264,48 @@ derive_deepseek_catalog() {
         models: [
           ($base
             | .slug = "deepseek-v4-flash"
-            | .display_name = "DeepSeek V4 Flash"
-            | .description = "Fast, economical DeepSeek V4 model for agentic coding."
+            | .prefer_websockets = false
+            | .support_verbosity = true
+            | .default_verbosity = "low"
+            | .apply_patch_tool_type = "freeform"
+            | .web_search_tool_type = "text"
+            | .input_modalities = ["text"]
+            | .supports_image_detail_original = false
+            | .truncation_policy = {mode: "tokens", limit: 10000}
+            | .supports_parallel_tool_calls = true
+            | .tool_mode = null
+            | .multi_agent_version = "v2"
+            | .use_responses_lite = false
+            | .include_skills_usage_instructions = false
+            | .auto_review_model_override = "deepseek-v4-flash"
+            | .context_window = 1048576
+            | .max_context_window = 1048576
+            | .effective_context_window_percent = 95
+            | .auto_compact_token_limit = null
+            | .comp_hash = "3000"
+            | .reasoning_summary_format = "experimental"
+            | .default_reasoning_summary = "none"
+            | .display_name = "DeepSeek-V4-Flash"
+            | .description = "Latest frontier agentic coding model."
             | .default_reasoning_level = "high"
             | .supported_reasoning_levels = [
-                {effort: "high", description: "Deep reasoning with lower latency"},
-                {effort: "max", description: "Maximum reasoning depth"}
+                {effort: "low", description: "Fast responses with lighter reasoning"},
+                {effort: "high", description: "Extra high reasoning depth for complex problems"},
+                {effort: "max", description: "Maximum reasoning depth for the hardest problems"}
               ]
-            | .priority = 20
+            | .shell_type = "shell_command"
+            | .visibility = "list"
+            | .minimal_client_version = "0.144.0"
+            | .supported_in_api = true
+            | .availability_nux = null
+            | .upgrade = null
+            | .priority = 1
             | .additional_speed_tiers = []
             | .service_tiers = []
-            | .support_verbosity = false
-            | .supports_image_detail_original = false
-            | .supports_search_tool = false
-            | .input_modalities = ["text"]
-            | .context_window = 1000000
-            | .max_context_window = 1000000),
-          ($base
-            | .slug = "deepseek-v4-pro"
-            | .display_name = "DeepSeek V4 Pro"
-            | .description = "Frontier DeepSeek V4 model for complex agentic coding."
-            | .default_reasoning_level = "high"
-            | .supported_reasoning_levels = [
-                {effort: "high", description: "Deep reasoning with lower latency"},
-                {effort: "max", description: "Maximum reasoning depth"}
-              ]
-            | .priority = 21
-            | .additional_speed_tiers = []
-            | .service_tiers = []
-            | .support_verbosity = false
-            | .supports_image_detail_original = false
-            | .supports_search_tool = false
-            | .input_modalities = ["text"]
-            | .context_window = 1000000
-            | .max_context_window = 1000000)
+            | .experimental_supported_tools = []
+            | .supports_search_tool = true
+            | .default_service_tier = null
+            | .supports_reasoning_summaries = true)
         ]
       }
   ' "$CACHE" > "$derived"
@@ -285,7 +314,8 @@ derive_deepseek_catalog() {
     jq -n --slurpfile existing "$CUSTOM" --slurpfile derived "$derived" '
       (($derived[0].models // []) | map({key: .slug, value: .}) | from_entries) as $generated
       | (($existing[0].models // []) | map({key: .slug, value: .}) | from_entries) as $current
-      | {models: (($generated + $current) | to_entries | map(.value))}
+      | ($current | with_entries(select(.key | startswith("deepseek-") | not))) as $non_deepseek
+      | {models: (($non_deepseek + $generated) | to_entries | map(.value))}
     ' > "$merged"
   else
     cp "$derived" "$merged"
@@ -294,8 +324,10 @@ derive_deepseek_catalog() {
   jq -e '
     (.models | length > 0)
     and any(.models[]; .slug == "deepseek-v4-flash")
-    and any(.models[]; .slug == "deepseek-v4-pro")
+    and ([.models[] | select(.slug == "deepseek-v4-pro")] | length == 0)
   ' "$merged" >/dev/null || die "无法生成完整的 DeepSeek V4 模型目录"
+  deepseek_catalog_matches_current_contract "$merged" \
+    || die "生成的模型目录不符合 DeepSeek 2026-07-31 Codex 配置契约"
   install -m 0600 "$merged" "$CUSTOM"
   rm -f "$derived" "$merged"
   info "已准备 DeepSeek 模型目录 ${CUSTOM}。"
@@ -417,7 +449,7 @@ status() {
   info "catalog    = $(config_get model_catalog_json)"
   info "forced_login_method = $(config_get forced_login_method)"
   info "providers  = $(provider_names | tr '\n' ' ')"
-  info "deepseek gateway = $(deepseek_provider_value base_url)"
+  info "deepseek API = $(deepseek_provider_value base_url)"
   if [ -n "$CODEX_BIN" ]; then
     info "加载的模型（codex debug models）:"
     "$CODEX_BIN" debug models 2>/dev/null | jq -r '.models[].slug' | sed 's/^/  /'
@@ -430,10 +462,14 @@ validate() {
   require_config
   [ -n "$CODEX_BIN" ] || die "未找到 codex CLI"
   has_deepseek_provider || die "config.toml 中未注册 DeepSeek provider"
-  [ "$(deepseek_provider_value base_url)" = "$DEEPSEEK_GATEWAY_URL" ] \
-    || die "DeepSeek provider 未指向本机兼容网关 $DEEPSEEK_GATEWAY_URL"
+  [ "$(deepseek_provider_value base_url)" = "$DEEPSEEK_BASE_URL" ] \
+    || die "DeepSeek provider 未指向官方 API $DEEPSEEK_BASE_URL"
   [ -z "$(config_get forced_login_method)" ] || die "forced_login_method 会绕过 ChatGPT 登录"
-  local models
+  local models catalog
+  catalog="$(config_get model_catalog_json)"
+  [ -f "$catalog" ] || die "模型目录不存在: $catalog"
+  deepseek_catalog_matches_current_contract "$catalog" \
+    || die "DeepSeek 模型目录未对齐 2026-07-31 官方 Codex 配置"
   info "== codex debug models =="
   models="$("$CODEX_BIN" debug models 2>/dev/null)"
   printf '%s\n' "$models" | jq -e 'any(.models[]; .slug | startswith("gpt-"))' >/dev/null \
