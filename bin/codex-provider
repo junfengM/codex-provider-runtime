@@ -1,0 +1,205 @@
+#!/bin/sh
+set -eu
+
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+project_root="$(dirname -- "$script_dir")"
+manager="$project_root/runtime/router_manager.py"
+config_tool="$project_root/config/coexist.sh"
+official_codex="${CODEX_OFFICIAL_CLI_PATH:-/Applications/ChatGPT.app/Contents/Resources/codex}"
+
+modern_root="$HOME/.codex/provider-runtime"
+legacy_root="$HOME/.codex/deepseek-native-router"
+if [ -n "${CODEX_PROVIDER_RUNTIME_ROOT:-}" ]; then
+    install_root="$CODEX_PROVIDER_RUNTIME_ROOT"
+elif [ -e "$modern_root/current" ] || [ ! -e "$legacy_root/current" ]; then
+    install_root="$modern_root"
+else
+    install_root="$legacy_root"
+fi
+
+manager_run() {
+    /usr/bin/python3 "$manager" \
+        --install-root "$install_root" \
+        --official-codex "$official_codex" \
+        "$@"
+}
+
+usage() {
+    cat <<'EOF'
+codex-provider - manage the Codex multi-provider local runtime
+
+Usage:
+  codex-provider prerequisites       Check local build/runtime prerequisites
+  codex-provider keychain-set        Store the DeepSeek API key without echo
+  codex-provider configure           Preserve ChatGPT and merge DeepSeek models
+  codex-provider install             Configure, build, verify, and activate
+  codex-provider status              Show configuration and runtime status
+  codex-provider doctor [--live]     Validate config, routing, and optional API call
+  codex-provider update              Reconcile a release for the bundled Codex
+  codex-provider verify              Run local config and protocol checks
+  codex-provider enable              Enable a verified version-matched release
+  codex-provider disable             Fall back to the official bundled backend
+  codex-provider uninstall           Unload support jobs; preserve state and secrets
+  codex-provider test-deepseek       Make one explicit ephemeral DeepSeek request
+  codex-provider history [provider]  Audit local thread provider metadata
+  codex-provider logs [lines]        Show updater and launcher logs
+  codex-provider self-test           Run repository tests and secret checks
+  codex-provider link-cli            Link this CLI into ~/.local/bin
+  codex-provider skill-install       Install the optional Codex operator skill
+
+Environment:
+  CODEX_PROVIDER_RUNTIME_ROOT        Override installed state directory
+  CODEX_OFFICIAL_CLI_PATH            Override ChatGPT.app bundled Codex path
+  COEXIST_CODEX_HOME                 Override Codex configuration directory
+EOF
+}
+
+prerequisites() {
+    failed=0
+    for command_name in git cargo rustup /usr/bin/python3 jq sqlite3 rg; do
+        if command -v "$command_name" >/dev/null 2>&1; then
+            printf 'PASS  %s\n' "$command_name"
+        else
+            printf 'FAIL  %s\n' "$command_name"
+            failed=1
+        fi
+    done
+    if [ -x "$official_codex" ]; then
+        printf 'PASS  bundled Codex: %s\n' "$official_codex"
+    else
+        printf 'FAIL  bundled Codex: %s\n' "$official_codex"
+        failed=1
+    fi
+    return "$failed"
+}
+
+doctor() {
+    live="${1:-}"
+    failed=0
+    printf '\n== Configuration ==\n'
+    if ! bash "$config_tool" validate; then
+        failed=1
+    fi
+    printf '\n== Runtime ==\n'
+    if ! manager_run status; then
+        failed=1
+    fi
+    binary="$install_root/current/codex"
+    printf '\n== Protocol routing ==\n'
+    if [ -x "$binary" ]; then
+        if ! manager_run smoke --binary "$binary"; then
+            failed=1
+        fi
+    else
+        printf 'FAIL  no current custom binary: %s\n' "$binary"
+        failed=1
+    fi
+    if [ "$live" = "--live" ]; then
+        printf '\n== Live DeepSeek request ==\n'
+        if ! bash "$config_tool" test-deepseek; then
+            failed=1
+        fi
+    elif [ -n "$live" ]; then
+        printf 'Unknown doctor option: %s\n' "$live" >&2
+        return 2
+    fi
+    return "$failed"
+}
+
+self_test() {
+    /usr/bin/python3 -m unittest discover -s "$project_root/tests" -v
+    bash -n "$config_tool"
+    sh -n "$project_root/bin/codex-provider"
+    "$project_root/scripts/check-secrets.sh"
+}
+
+case "${1:-help}" in
+    help|-h|--help)
+        usage
+        ;;
+    prerequisites)
+        prerequisites
+        ;;
+    keychain-set)
+        bash "$config_tool" keychain-set
+        ;;
+    configure)
+        bash "$config_tool" enable-both
+        ;;
+    install)
+        prerequisites
+        self_test
+        bash "$config_tool" enable-both
+        manager_run update
+        manager_run smoke --binary "$install_root/current/codex"
+        manager_run install-support
+        manager_run activate-support
+        printf '\nInstalled. Fully quit and reopen ChatGPT/Codex Desktop, then run doctor --live.\n'
+        ;;
+    status)
+        bash "$config_tool" status
+        manager_run status
+        ;;
+    doctor)
+        doctor "${2:-}"
+        ;;
+    update)
+        manager_run update
+        ;;
+    verify)
+        bash "$config_tool" validate
+        manager_run smoke --binary "$install_root/current/codex"
+        ;;
+    enable)
+        manager_run enable
+        ;;
+    disable)
+        manager_run disable
+        ;;
+    uninstall)
+        manager_run uninstall-support
+        ;;
+    test-deepseek)
+        bash "$config_tool" test-deepseek
+        ;;
+    history)
+        bash "$config_tool" history "${2:-all}"
+        ;;
+    logs)
+        lines="${2:-100}"
+        case "$lines" in *[!0-9]*|'') printf 'lines must be a positive integer\n' >&2; exit 2 ;; esac
+        for log_file in "$install_root/logs/updater.log" "$install_root/logs/launcher.log"; do
+            if [ -f "$log_file" ]; then
+                printf '\n== %s ==\n' "$log_file"
+                tail -n "$lines" "$log_file"
+            fi
+        done
+        ;;
+    self-test)
+        self_test
+        ;;
+    link-cli)
+        destination="$HOME/.local/bin/codex-provider"
+        mkdir -p "$(dirname "$destination")"
+        if [ -e "$destination" ] || [ -L "$destination" ]; then
+            current="$(readlink "$destination" 2>/dev/null || true)"
+            [ "$current" = "$project_root/bin/codex-provider" ] \
+                || { printf 'Refusing to replace existing %s\n' "$destination" >&2; exit 2; }
+        else
+            ln -s "$project_root/bin/codex-provider" "$destination"
+        fi
+        printf 'Linked %s\n' "$destination"
+        ;;
+    skill-install)
+        source_skill="$project_root/integrations/codex-skill/codex-provider-runtime"
+        target_skill="${CODEX_HOME:-$HOME/.codex}/skills/codex-provider-runtime"
+        mkdir -p "$(dirname "$target_skill")"
+        /usr/bin/ditto "$source_skill" "$target_skill"
+        printf 'Installed optional skill: %s\n' "$target_skill"
+        ;;
+    *)
+        printf 'Unknown command: %s\n\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac

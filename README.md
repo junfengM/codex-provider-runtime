@@ -1,0 +1,121 @@
+# Codex Provider Runtime
+
+Codex Provider Runtime 是一个 macOS 本地运行时扩展。它让 Codex Desktop 和手机 Remote
+在新建 `deepseek-*` 对话时使用 DeepSeek provider，同时保留 ChatGPT 登录、GPT 模型和
+OpenAI provider。
+
+当前版本聚焦 DeepSeek V4 Flash/Pro。它不修改或重新签名 `ChatGPT.app`，不代理提示词与
+响应，不重写历史会话 provider，也不支持在同一旧对话中跨 provider 切换。
+
+## 工程形态
+
+仓库是唯一源码来源，`~/.codex` 只保存安装态与本机状态：
+
+```text
+codex-provider-runtime/
+├── bin/codex-provider       # 统一生命周期 CLI
+├── config/coexist.sh        # ChatGPT/DeepSeek 配置与模型目录管理
+├── runtime/                 # 精确版本构建器、原生补丁和稳定启动器
+├── tests/                   # CLI、补丁和升级不变量测试
+├── docs/                    # 架构、运维和协议边界
+└── integrations/codex-skill # 可选的 Codex 操作入口
+```
+
+新安装默认使用 `~/.codex/provider-runtime`。如果检测到现有
+`~/.codex/deepseek-native-router/current`，CLI 会继续使用旧目录，避免破坏已经验证通过的
+安装。也可以通过 `CODEX_PROVIDER_RUNTIME_ROOT` 明确指定路径。
+
+## 为什么需要原生 app-server 补丁
+
+Codex 把模型名和 provider 分开保存。Desktop 模型下拉框可以显示 DeepSeek，但部分
+新线程请求仍会省略 provider 或携带默认的 `openai`。手机 Remote 直接进入公共
+app-server 路径，因此仅在 Desktop stdin 前增加 JavaScript shim 无法覆盖手机请求。
+
+本项目只在 app-server 的 `thread/start` 入口执行窄路由：
+
+```text
+deepseek-* + provider 缺失/openai  → deepseek
+GPT 模型                          → 保持 OpenAI
+显式第三方 provider               → 保持调用方选择
+旧线程/turn/start                 → 不修改
+```
+
+## 快速开始
+
+前置条件：macOS、`/Applications/ChatGPT.app`、Git、rustup/Cargo、`jq`、`sqlite3`、
+`ripgrep`，以及可访问官方 `openai/codex` 仓库。
+
+```bash
+git clone <private-repository-url>
+cd codex-provider-runtime
+
+./bin/codex-provider prerequisites
+./bin/codex-provider keychain-set
+./bin/codex-provider install
+```
+
+`keychain-set` 会在终端中隐藏输入，不会把 API Key 写进仓库或聊天记录。安装完成后完全
+退出并重新打开 ChatGPT/Codex Desktop，再执行：
+
+```bash
+./bin/codex-provider doctor --live
+```
+
+可选安装全局命令和 Codex skill：
+
+```bash
+./bin/codex-provider link-cli
+./bin/codex-provider skill-install
+```
+
+## 常用命令
+
+```bash
+codex-provider status
+codex-provider doctor
+codex-provider doctor --live
+codex-provider update
+codex-provider verify
+codex-provider history deepseek
+codex-provider logs 200
+codex-provider disable
+codex-provider enable
+codex-provider uninstall
+```
+
+- `disable`：保留安装与凭据，下一次启动回退官方后端；
+- `enable`：解除禁用标记，但仍要求版本完全匹配；
+- `uninstall`：卸载 LaunchAgent 和环境入口，保留 releases、配置与 Keychain；
+- `doctor --live`：除本地协议检查外，再发起一次临时 DeepSeek 请求。
+
+## 安全升级模型
+
+更新器读取客户端内置 Codex 版本，只获取完全匹配的 `rust-v<version>` 官方标签。补丁
+锚点、Cargo.lock、单元测试、两个 release 二进制、协议 smoke、版本号、签名和摘要全部
+通过后，才会原子切换 `current`。
+
+若客户端版本与自定义发布不一致、精确标签尚未发布、源码结构改变或构建失败，稳定启动器
+会使用 ChatGPT.app 内置官方后端。它不会让旧自定义二进制冒充新版本。此时 GPT 继续可用，
+而 DeepSeek 新线程路由可能暂时不可用，直到补丁适配新版本。
+
+## 验收标准
+
+模型出现在下拉框不代表路由成功。完整验收要求：
+
+1. Desktop GPT 新对话记录 `model_provider = openai`；
+2. Desktop DeepSeek 新对话记录 `model = deepseek-v4-*` 和
+   `model_provider = deepseek`；
+3. 手机 Remote DeepSeek 新对话具有相同元数据并产生完成/token 事件；
+4. 没有认证、unsupported model、fallback 或旧 JavaScript router 错误；
+5. 实际 app-server 来自当前版本匹配的 `current/codex`。
+
+## 开发
+
+```bash
+make check
+```
+
+测试与 secret scan 必须在提交前通过。仓库不应包含 `~/.codex` 配置、API Key、会话、
+模型缓存、LaunchAgent plist、构建缓存或编译后的 Codex 二进制。
+
+详细设计见 [架构说明](docs/architecture.md) 和 [运维手册](docs/operations.md)。
