@@ -4,7 +4,7 @@
 
 ```text
 Desktop / phone Remote
-          │ thread/start / thread/list
+          │ thread/start / thread/resume / thread/list
           ▼
 stable CODEX_CLI_PATH launcher
           │ exact version gate
@@ -37,10 +37,17 @@ moved to recoverable backups during activation.
 
 ## Patch policy
 
-The Rust patch keeps model routing deliberately provider-specific and
-new-thread-only. It changes a missing or default OpenAI provider to `deepseek`
-only when the model is exactly `deepseek-v4-flash`. Explicit non-default
-providers, unintegrated DeepSeek models, and GPT models pass through unchanged.
+The Rust patch keeps model routing deliberately provider-specific and model-exact.
+It changes a missing or default OpenAI provider to `deepseek` only when the
+model is exactly `deepseek-v4-flash`, both when a thread starts and when a
+thread is resumed. After resume, subsequent turns inherit the active thread
+provider; the patch does not add an unsupported provider-switch field to
+`turn/start`. Explicit non-default providers, unintegrated DeepSeek models,
+and GPT models pass through unchanged.
+
+The resume normalization is an in-memory compatibility correction. It does not
+rewrite stored thread metadata, and it does not migrate an existing conversation
+between providers.
 
 The same versioned patch restores the public `thread/list` contract: omitted,
 null, and empty `modelProviders` filters mean all providers. Explicit provider

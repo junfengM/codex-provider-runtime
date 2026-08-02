@@ -38,22 +38,24 @@ The smallest durable design is:
 The desktop UI must send both fields. Changing only the open-source app-server
 is insufficient if the desktop client continues to send only `model`.
 
-## New-thread native-router exception
+## Provider-continuity router exception
 
-The installed Desktop build supports `CODEX_CLI_PATH`, and `thread/start`
-already accepts `modelProvider`. A version-matched local build of the open-source
-app-server can therefore make all new-thread entry points provider-aware without
-modifying the signed app:
+The installed Desktop build supports `CODEX_CLI_PATH`, and `thread/start` and
+`thread/resume` accept `modelProvider`. A version-matched local build of the
+open-source app-server can therefore make new and resumed entry points
+provider-aware without modifying the signed app:
 
 - normalize only currently validated model names (as of 2026-08-01,
   `deepseek-v4-flash`) to provider `deepseek` inside the shared `thread/start`
-  handler when the provider is missing or `openai`;
+  and `thread/resume` handlers when the provider is missing or `openai`;
 - leave GPT new threads on the default OpenAI provider;
 - preserve explicit third-party providers;
-- leave `turn/start` untouched.
+- leave `turn/start`'s public shape untouched and inherit the active thread
+  provider on later turns.
 
-This covers Desktop and phone Remote new chats because they converge on the
-same app-server handler. It still solves new-thread selection only. Read
+This covers Desktop and phone Remote new chats and reconnect/resume because they
+converge on the same app-server. It does not implement deliberate same-thread
+provider switching. Read
 [native-new-thread-router.md](native-new-thread-router.md) before installation
 or maintenance.
 
@@ -64,7 +66,7 @@ A Skill can:
 - build a catalog that displays both model families;
 - preserve both authentication paths;
 - build, install, validate, upgrade, and safely disable a version-matched native
-  new-thread provider router through `CODEX_CLI_PATH`;
+  provider-continuity router through `CODEX_CLI_PATH`;
 - diagnose hidden history;
 - run explicit provider tests;
 - document or invoke a command-line compact-and-resume bridge.
@@ -76,6 +78,7 @@ A Skill cannot:
 - guarantee lossless raw-history compatibility across providers.
 
 Reject configuration-only recipes that claim to support same-thread provider
-switching. Do not describe the new-thread hook as native same-thread switching.
+switching. Do not describe provider continuity on resume as native provider
+switching.
 Re-check this boundary after protocol or product changes; do not preserve it as
 dogma if the client later gains atomic provider-aware turns.
