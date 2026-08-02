@@ -1,5 +1,25 @@
 # Operations
 
+## Safe API key handoff
+
+Run the credential entry step from a visible macOS Terminal, not from a chat
+window or an agent session whose stdin is not visible:
+
+```bash
+cd /path/to/codex-provider-runtime
+./bin/codex-provider keychain-set
+```
+
+The prompt does not echo the key. The command stores it in the macOS Keychain
+under the runtime service identity and does not write the value to the
+repository, `config.toml`, logs, or chat history. Never paste the key into a
+Codex/ChatGPT conversation. An agent can safely check the handoff without
+reading the secret:
+
+```bash
+./bin/codex-provider keychain-status
+```
+
 ## Install
 
 ```bash
