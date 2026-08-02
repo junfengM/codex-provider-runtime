@@ -7,6 +7,24 @@ pub(super) fn model_provider_for_new_thread(
     model: Option<&str>,
     model_provider: Option<String>,
 ) -> Option<String> {
+    model_provider_for_supported_model(model, model_provider)
+}
+
+// A resumed thread can carry the model selected by Desktop/Remote while
+// omitting modelProvider. In that case Config would otherwise fall back to
+// the global OpenAI provider before the first post-resume turn. Apply the same
+// exact-model policy to the resume path without rewriting stored metadata.
+pub(super) fn model_provider_for_resume(
+    model: Option<&str>,
+    model_provider: Option<String>,
+) -> Option<String> {
+    model_provider_for_supported_model(model, model_provider)
+}
+
+fn model_provider_for_supported_model(
+    model: Option<&str>,
+    model_provider: Option<String>,
+) -> Option<String> {
     let is_deepseek_model = model == Some("deepseek-v4-flash");
     let has_default_provider = matches!(model_provider.as_deref(), None | Some("openai"));
 
@@ -31,6 +49,7 @@ pub(super) fn model_provider_filter_for_thread_list(
 mod tests {
     use super::model_provider_filter_for_thread_list;
     use super::model_provider_for_new_thread;
+    use super::model_provider_for_resume;
 
     #[test]
     fn routes_deepseek_when_provider_is_missing() {
@@ -44,6 +63,21 @@ mod tests {
     fn corrects_chatgpt_default_for_flash() {
         assert_eq!(
             model_provider_for_new_thread(
+                Some("deepseek-v4-flash"),
+                Some("openai".to_string())
+            ),
+            Some("deepseek".to_string())
+        );
+    }
+
+    #[test]
+    fn corrects_chatgpt_default_when_resuming_flash() {
+        assert_eq!(
+            model_provider_for_resume(Some("deepseek-v4-flash"), None),
+            Some("deepseek".to_string())
+        );
+        assert_eq!(
+            model_provider_for_resume(
                 Some("deepseek-v4-flash"),
                 Some("openai".to_string())
             ),

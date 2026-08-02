@@ -4,14 +4,14 @@
 
 - The model catalog describes model capabilities but does not reliably select
   a transport provider.
-- `thread/start` carries model and provider; the Desktop picker can otherwise
+- `thread/start` and `thread/resume` carry model and provider; the Desktop picker can otherwise
   submit a third-party model with the OpenAI default provider.
 - `model_catalog_json` is a startup snapshot and must be merged with official
   GPT entries and refreshed after updates.
 - Stored thread provider metadata is part of conversation identity. Rewriting
   it can resume a thread through the wrong endpoint.
-- Desktop and phone Remote new chats converge on the shared App Server
-  `thread/start` path in the currently verified client.
+- Desktop and phone Remote new chats and reconnects converge on the shared App
+  Server `thread/start`/`thread/resume` paths in the currently verified client.
 
 Re-check protocol fields after Codex upgrades; the conclusions are stable only
 while the observed protocol remains unchanged.
@@ -34,7 +34,7 @@ discrepancy.
 
 Keep the global provider unset so ChatGPT remains the normal default. Register
 DeepSeek as a custom provider and route only validated model names at new-thread
-creation. On macOS, prefer command-backed Keychain authentication; elsewhere
+creation and Remote resume. On macOS, prefer command-backed Keychain authentication; elsewhere
 use an environment key. Never copy the secret into a catalog or repository.
 
 Current verified DeepSeek provider contract (2026-08-01):
@@ -91,8 +91,9 @@ visibility.
 
 ## Product boundary
 
-The current local runtime solves provider-aware new-thread creation. It does
-not guarantee safe same-thread provider switching because `turn/start`, active
+The current local runtime solves provider-aware new-thread creation and
+provider continuity on resume. It does not guarantee safe same-thread provider
+switching because `turn/start`, active
 client state, history item formats, and persistence must all change
 atomically. Read `native-provider-switch.md` when that separate goal returns.
 

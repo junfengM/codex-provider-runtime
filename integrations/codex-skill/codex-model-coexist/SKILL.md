@@ -58,15 +58,15 @@ only when same-thread switching is in scope.
 
 ## Current verified baseline
 
-Last verified: 2026-08-01.
+Last verified: 2026-08-02.
 
 - Integrate only `deepseek-v4-flash`.
 - Send it directly to `https://api.deepseek.com/responses` through the Codex
   native Responses client.
 - Do not expose or route V4 Pro until official native Codex/Responses support
   exists and the same acceptance tests pass.
-- Route new Flash threads only; leave GPT, unknown DeepSeek models, and explicit
-  third-party providers unchanged.
+- Route new and resumed Flash threads only; leave GPT, unknown DeepSeek models,
+  and explicit third-party providers unchanged.
 - Map `codex-auto-review` to Flash and prefer `low` effort while this remains the
   selected cost/performance policy.
 - Keep the retired loopback gateway unloaded. It is not part of the current
@@ -104,7 +104,8 @@ a structured `commandExecution`, and an independently checked hidden result.
 
 Fully quit and reopen Codex Desktop after catalog or backend activation. Verify
 separate new GPT and Flash chats. When phone access is in scope, verify one new
-phone Remote Flash chat through the same shared `thread/start` path.
+phone Remote Flash chat and then resume that same thread before sending another
+turn; both lifecycle paths must retain `model_provider = deepseek`.
 
 ## Authentication and catalog rules
 
@@ -114,7 +115,7 @@ login and do not set a global DeepSeek provider merely to make the picker work.
 
 Merge the official GPT catalog with the currently validated DeepSeek entries.
 Refresh after Codex changes its official catalog. Model entries describe
-capabilities; the native new-thread router supplies provider identity.
+capabilities; the native start/resume router supplies provider identity.
 
 ## History and provider boundaries
 

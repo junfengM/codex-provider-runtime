@@ -33,6 +33,7 @@ VERSION_RE = re.compile(r"^codex-cli\s+(\S+)\s*$")
 MODULE_MARKER = "mod provider_route;"
 CALL_MARKER = "model_provider_for_new_thread(model.as_deref(), model_provider)"
 HISTORY_CALL_MARKER = "model_provider_filter_for_thread_list(model_providers)"
+RESUME_CALL_MARKER = "model_provider_for_resume("
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
 RETIRED_GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
@@ -121,6 +122,7 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
         MODULE_MARKER in parent_text
         and CALL_MARKER in thread_text
         and HISTORY_CALL_MARKER in thread_text
+        and RESUME_CALL_MARKER in thread_text
         and destination.is_file()
     )
     if fully_patched:
@@ -135,13 +137,20 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
         and HISTORY_CALL_MARKER not in thread_text
         and destination.is_file()
     )
+    existing_patch_needs_resume = (
+        MODULE_MARKER in parent_text
+        and CALL_MARKER in thread_text
+        and HISTORY_CALL_MARKER in thread_text
+        and RESUME_CALL_MARKER not in thread_text
+        and destination.is_file()
+    )
     fresh_source = (
         MODULE_MARKER not in parent_text
         and CALL_MARKER not in thread_text
         and HISTORY_CALL_MARKER not in thread_text
         and not destination.exists()
     )
-    if not fresh_source and not legacy_router_patch:
+    if not fresh_source and not legacy_router_patch and not existing_patch_needs_resume:
         raise RouterError("Source contains a partial provider patch; refusing mixed state")
 
     if fresh_source:
@@ -161,6 +170,7 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
             "use super::*;\n"
             "use super::provider_route::model_provider_filter_for_thread_list;\n"
             "use super::provider_route::model_provider_for_new_thread;\n"
+            "use super::provider_route::model_provider_for_resume;\n"
         )
         thread_text = replace_once(
             thread_text,
@@ -183,17 +193,32 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
             call_replacement,
             description="new-thread provider normalization",
         )
-    else:
+    elif legacy_router_patch:
         legacy_import = "use super::provider_route::model_provider_for_new_thread;\n"
         upgraded_import = (
             "use super::provider_route::model_provider_filter_for_thread_list;\n"
             "use super::provider_route::model_provider_for_new_thread;\n"
+            "use super::provider_route::model_provider_for_resume;\n"
         )
         thread_text = replace_once(
             thread_text,
             legacy_import,
             upgraded_import,
             description="legacy provider patch import upgrade",
+        )
+    else:
+        resume_import_anchor = (
+            "use super::provider_route::model_provider_for_new_thread;\n"
+        )
+        resume_import_replacement = (
+            resume_import_anchor
+            + "use super::provider_route::model_provider_for_resume;\n"
+        )
+        thread_text = replace_once(
+            thread_text,
+            resume_import_anchor,
+            resume_import_replacement,
+            description="resume provider normalization import",
         )
 
     history_anchor = """        let model_provider_filter = match model_providers {
@@ -212,12 +237,45 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
         "        let model_provider_filter =\n"
         "            model_provider_filter_for_thread_list(model_providers);\n"
     )
-    thread_text = replace_once(
-        thread_text,
-        history_anchor,
-        history_replacement,
-        description="all-provider thread-list default",
-    )
+    if HISTORY_CALL_MARKER not in thread_text:
+        thread_text = replace_once(
+            thread_text,
+            history_anchor,
+            history_replacement,
+            description="all-provider thread-list default",
+        )
+
+    resume_anchor = """        let persisted_metadata = self
+            .load_and_apply_persisted_resume_metadata(
+                &thread_history,
+                &mut request_overrides,
+                &mut typesafe_overrides,
+            )
+            .await;
+
+        // Derive a Config using the same logic as new conversation, honoring overrides if provided.
+"""
+    resume_replacement = """        let persisted_metadata = self
+            .load_and_apply_persisted_resume_metadata(
+                &thread_history,
+                &mut request_overrides,
+                &mut typesafe_overrides,
+            )
+            .await;
+        typesafe_overrides.model_provider = model_provider_for_resume(
+            typesafe_overrides.model.as_deref(),
+            typesafe_overrides.model_provider.clone(),
+        );
+
+        // Derive a Config using the same logic as new conversation, honoring overrides if provided.
+"""
+    if RESUME_CALL_MARKER not in thread_text:
+        thread_text = replace_once(
+            thread_text,
+            resume_anchor,
+            resume_replacement,
+            description="resumed-thread provider normalization",
+        )
 
     parent.write_text(parent_text, encoding="utf-8")
     thread.write_text(thread_text, encoding="utf-8")
@@ -474,8 +532,10 @@ def protocol_smoke(binary: Path) -> dict:
 def thread_list_visibility_smoke(binary: Path) -> dict:
     """Prove that the public omitted filter has the same semantics as []."""
     with tempfile.TemporaryDirectory(prefix="codex-thread-list-smoke-") as temporary:
-        stderr_path = Path(temporary) / "stderr.log"
+        codex_home = Path(temporary)
+        stderr_path = codex_home / "stderr.log"
         env = os.environ.copy()
+        env["CODEX_HOME"] = os.fspath(codex_home)
         env["CODEX_CLI_PATH"] = os.fspath(binary)
         with stderr_path.open("w+", encoding="utf-8") as stderr:
             process = subprocess.Popen(
@@ -597,8 +657,159 @@ def thread_list_visibility_smoke(binary: Path) -> dict:
 def protocol_smoke_suite(binary: Path) -> dict:
     return {
         "new_thread_routing": protocol_smoke(binary),
+        "resumed_thread_routing": resumed_thread_provider_smoke(binary),
         "thread_list_visibility": thread_list_visibility_smoke(binary),
     }
+
+
+def resumed_thread_provider_smoke(binary: Path) -> dict:
+    """Prove a cold app-server resume retains DeepSeek provider identity."""
+    catalog = configured_model_catalog()
+    with tempfile.TemporaryDirectory(prefix="codex-resume-router-smoke-") as temporary:
+        codex_home = Path(temporary)
+        config = (
+            'model = "gpt-5.6-sol"\n'
+            f"model_catalog_json = {json.dumps(os.fspath(catalog))}\n\n"
+            "[model_providers.deepseek]\n"
+            'name = "DeepSeek"\n'
+            # Keep this smoke test offline.  The turn is submitted only to
+            # force a durable rollout; the local closed port prevents any
+            # provider request from reaching a real API.
+            'base_url = "http://127.0.0.1:1"\n'
+            'wire_api = "responses"\n'
+        )
+        (codex_home / "config.toml").write_text(config, encoding="utf-8")
+        env = os.environ.copy()
+        env["CODEX_HOME"] = os.fspath(codex_home)
+        env["CODEX_CLI_PATH"] = os.fspath(binary)
+        thread_id: Optional[str] = None
+
+        def start_server(phase: str) -> subprocess.Popen[str]:
+            stderr_path = codex_home / f"{phase}.stderr.log"
+            with stderr_path.open("w+", encoding="utf-8") as stderr:
+                process = subprocess.Popen(
+                    [os.fspath(binary), "app-server"],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=stderr,
+                    text=True,
+                    bufsize=1,
+                    env=env,
+                )
+                try:
+                    send_json_line(
+                        process,
+                        {
+                            "method": "initialize",
+                            "id": 1,
+                            "params": {
+                                "clientInfo": {
+                                    "name": "codex-provider-runtime-resume-smoke",
+                                    "title": "Codex provider runtime resume smoke",
+                                    "version": "1",
+                                },
+                                "capabilities": {"experimentalApi": True},
+                            },
+                        },
+                    )
+                    read_response(process, 1)
+                    send_json_line(process, {"method": "initialized"})
+                    return process
+                except Exception:
+                    process.kill()
+                    process.wait(timeout=5)
+                    raise
+
+        def stop_server(process: subprocess.Popen[str]) -> None:
+            # Closing the JSON-RPC input lets app-server drain and persist its
+            # thread state before exiting.  A hard signal can leave the
+            # rollout uncommitted, making the next cold-resume assertion fail
+            # for an unrelated reason.
+            if process.stdin is not None:
+                process.stdin.close()
+            try:
+                process.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                process.kill()
+                process.wait(timeout=10)
+
+        first = start_server("start")
+        try:
+            send_json_line(
+                first,
+                {
+                    "method": "thread/start",
+                    "id": 2,
+                    "params": {
+                        "model": "deepseek-v4-flash",
+                        "cwd": "/private/tmp",
+                        "approvalPolicy": "never",
+                        "sandbox": "read-only",
+                        "environments": [],
+                    },
+                },
+            )
+            started = read_response(first, 2)
+            thread_id = started.get("thread", {}).get("id")
+            if not thread_id:
+                raise RouterError("resume smoke thread/start returned no thread id")
+            if started.get("modelProvider") != "deepseek":
+                raise RouterError(
+                    "resume smoke thread/start routed DeepSeek to "
+                    f"{started.get('modelProvider')!r}"
+                )
+            send_json_line(
+                first,
+                {
+                    "method": "turn/start",
+                    "id": 3,
+                    "params": {
+                        "threadId": thread_id,
+                        "input": [
+                            {
+                                "type": "text",
+                                "text": "resume routing persistence probe",
+                            }
+                        ],
+                        "model": "deepseek-v4-flash",
+                    },
+                },
+            )
+            read_response(first, 3)
+        finally:
+            stop_server(first)
+
+        resumed = start_server("resume")
+        try:
+            send_json_line(
+                resumed,
+                {
+                    "method": "thread/resume",
+                    "id": 2,
+                    "params": {
+                        "threadId": thread_id,
+                        "model": "deepseek-v4-flash",
+                        "excludeTurns": True,
+                    },
+                },
+            )
+            result = read_response(resumed, 2)
+            provider = result.get("modelProvider")
+            thread_provider = result.get("thread", {}).get("modelProvider")
+            if provider != "deepseek" or thread_provider != "deepseek":
+                raise RouterError(
+                    "resume smoke routed DeepSeek incorrectly: "
+                    f"response={provider!r}, thread={thread_provider!r}"
+                )
+            return {
+                "model": "deepseek-v4-flash",
+                "model_provider": provider,
+                "thread_model_provider": thread_provider,
+                "cold_resume": True,
+            }
+        finally:
+            stop_server(resumed)
 
 
 def app_server_deepseek_tool_smoke(binary: Path, cwd: Path) -> dict:
@@ -928,7 +1139,7 @@ def build_release(
         "patch_sha256": patch_digest,
         "custom_sha256": sha256(staging / "codex"),
         "code_mode_host_sha256": sha256(staging / "codex-code-mode-host"),
-        "patch": "deepseek-flash-route-and-all-provider-history-v3",
+        "patch": "deepseek-flash-route-resume-and-all-provider-history-v4",
         "built_at": utc_now(),
         "workspace_lock_versions_normalized": lock_versions_normalized,
         "protocol_smoke": smoke_result,
@@ -936,7 +1147,7 @@ def build_release(
             "provider_route unit tests",
             "binary version smoke",
             "code-mode-host help",
-            "app-server routing and all-provider thread-list protocol smoke",
+            "app-server new/resumed routing and all-provider thread-list protocol smoke",
         ],
     }
     (staging / "manifest.json").write_text(
@@ -1236,11 +1447,14 @@ def verify_patch(source: Path, patch_asset: Path) -> None:
         relative_files = (
             Path("codex-rs/app-server/src/request_processors.rs"),
             Path("codex-rs/app-server/src/request_processors/thread_processor.rs"),
+            Path("codex-rs/app-server/src/request_processors/provider_route.rs"),
         )
         for relative in relative_files:
             destination = fixture / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source / relative, destination)
+            source_file = source / relative
+            if source_file.is_file():
+                shutil.copy2(source_file, destination)
         state = patch_source(fixture, patch_asset)
         print(f"Patch verification succeeded: {state}")
 
