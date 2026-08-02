@@ -1,14 +1,14 @@
-# Native new-thread provider router
+# Native provider continuity router
 
 ## Scope
 
-Use the native router when Desktop and phone Remote must start a supported
-third-party model through its provider while GPT remains on OpenAI. Keep the
-route table evidence-driven and model-exact. The 2026-08-01 verified policy
-routes only `deepseek-v4-flash` to `deepseek`.
+Use the native router when Desktop and phone Remote must start or resume a
+supported third-party model through its provider while GPT remains on OpenAI.
+Keep the route table evidence-driven and model-exact. The 2026-08-02 verified
+policy routes only `deepseek-v4-flash` to `deepseek`.
 
-It changes only new-thread provider normalization. It does not implement
-same-thread provider switching.
+It normalizes provider identity at new-thread creation and Remote resume. It
+does not implement deliberate same-thread provider switching.
 
 ## Current architecture
 
@@ -16,7 +16,7 @@ The reusable `codex-provider-runtime` project owns:
 
 - exact-version source acquisition, patching, build, signing, activation, and
   fail-safe controls;
-- the narrow model-to-provider Rust policy;
+- the narrow model-to-provider Rust policy for `thread/start` and `thread/resume`;
 - a stable `CODEX_CLI_PATH` launcher;
 - catalog/provider reconciliation and live acceptance tests.
 - the App Server `thread/list` all-provider default required for shared Desktop
@@ -42,8 +42,8 @@ Require all of the following before activation:
    every visible but unsupported model family.
 5. Build the required Codex binaries with the pinned toolchain and lockfile.
 6. Record official binary, patch asset, source commit, and custom binary hashes.
-7. Run protocol smoke tests for both DeepSeek Flash/GPT routing and omitted
-   versus empty all-provider history.
+7. Run protocol smoke tests for both DeepSeek Flash/GPT routing, DeepSeek
+   resume continuity, and omitted versus empty all-provider history.
 8. Run a live App Server tool loop against the currently documented endpoint.
 9. Atomically activate only after all checks pass.
 
@@ -65,7 +65,8 @@ Do not infer routing from the picker. Confirm:
 - Desktop GPT rollout uses `model_provider = openai`;
 - Desktop Flash rollout uses `model = deepseek-v4-flash` and
   `model_provider = deepseek`;
-- phone Remote has the same pairing when remote access is in scope;
+- phone Remote has the same pairing after both new-thread creation and resume
+  when remote access is in scope;
 - `thread/list` without `modelProviders` includes the same interactive threads
   as an empty all-provider filter, while explicit filters remain exact;
 - a structured shell command executes and its hidden result is independently

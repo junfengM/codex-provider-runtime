@@ -12,8 +12,9 @@ Codex treats a model name and a model provider as separate settings.
 - model catalog records describe capabilities and do not carry a provider id.
 
 The desktop model picker starts subsequent turns. A mixed catalog can therefore
-show GPT and DeepSeek together without providing enough information to route
-the selected model to the matching backend.
+show GPT and DeepSeek together without providing enough information to perform
+an intentional provider switch inside one conversation. It must not, however,
+drop the provider that was already selected for a thread during Remote resume.
 
 ## Required product changes
 
@@ -38,21 +39,23 @@ The smallest durable design is:
 The desktop UI must send both fields. Changing only the open-source app-server
 is insufficient if the desktop client continues to send only `model`.
 
-## New-thread native-router exception
+## Provider continuity for new and resumed threads
 
-The installed Desktop build supports `CODEX_CLI_PATH`, and `thread/start`
-already accepts `modelProvider`. A version-matched local build of the open-source
-app-server can therefore make all new-thread entry points provider-aware without
-modifying the signed app:
+The installed Desktop build supports `CODEX_CLI_PATH`, and `thread/start` and
+`thread/resume` already accept `modelProvider`. A version-matched local build
+of the open-source app-server can therefore make new and resumed entry points
+provider-aware without modifying the signed app:
 
 - normalize only `deepseek-v4-flash` to provider `deepseek` inside the shared `thread/start`
-  handler when the provider is missing or `openai`;
+  and `thread/resume` handlers when the provider is missing or `openai`;
 - leave GPT new threads on the default OpenAI provider;
 - preserve explicit third-party providers;
-- leave `turn/start` untouched.
+- leave `turn/start`'s public shape untouched while ensuring it inherits the
+  active provider from the resumed thread.
 
-This covers Desktop and phone Remote new chats because they converge on the
-same app-server handler. It still solves new-thread selection only. Read
+This covers Desktop and phone Remote new chats and the reconnect/resume path
+because they converge on the same shared app-server. It does not implement
+deliberate same-thread provider switching. Read
 [native-new-thread-router.md](native-new-thread-router.md) before installation
 or maintenance.
 
@@ -63,7 +66,7 @@ A Skill can:
 - build a catalog that displays both model families;
 - preserve both authentication paths;
 - build, install, validate, upgrade, and safely disable a version-matched native
-  new-thread provider router through `CODEX_CLI_PATH`;
+  provider-continuity router through `CODEX_CLI_PATH`;
 - diagnose hidden history;
 - run explicit provider tests;
 - document or invoke a command-line compact-and-resume bridge.

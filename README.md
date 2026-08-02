@@ -1,8 +1,8 @@
 # Codex Provider Runtime
 
 Codex Provider Runtime 是一个 macOS 本地运行时扩展。它让 Codex Desktop 和手机 Remote
-在新建 `deepseek-v4-flash` 对话时使用 DeepSeek provider，同时保留 ChatGPT 登录、GPT 模型和
-OpenAI provider。
+在新建或恢复 `deepseek-v4-flash` 对话时保持使用 DeepSeek provider，同时保留 ChatGPT 登录、
+GPT 模型和 OpenAI provider。
 
 当前版本只接入 DeepSeek V4 Flash-0731。它不修改或重新签名 `ChatGPT.app`，不重写历史
 会话 provider，也不支持在同一旧对话中跨 provider 切换。Flash 通过 DeepSeek 官方原生
@@ -29,18 +29,23 @@ codex-provider-runtime/
 ## 为什么需要原生 app-server 补丁
 
 Codex 把模型名和 provider 分开保存。Desktop 模型下拉框可以显示 DeepSeek，但部分
-新线程请求仍会省略 provider 或携带默认的 `openai`。手机 Remote 直接进入公共
+新线程或恢复线程请求仍可能省略 provider 或携带默认的 `openai`。手机 Remote 直接进入公共
 app-server 路径，因此仅在 Desktop stdin 前增加 JavaScript shim 无法覆盖手机请求。
 
-本项目在 app-server 的公共协议层维护两项互不干扰的兼容修复。新线程仍执行窄路由：
+本项目在 app-server 的公共协议层维护两项互不干扰的兼容修复。新线程和恢复线程都执行窄路由：
 
 ```text
 deepseek-v4-flash + provider 缺失/openai  → deepseek
 其他模型（包括尚未接入的 DeepSeek）      → 不改路由
 GPT 模型                                 → 保持 OpenAI
 显式第三方 provider                      → 保持调用方选择
-旧线程/turn/start                 → 不修改
+DeepSeek 线程恢复/后续 turn          → 继承 deepseek provider
 ```
+
+`thread/resume` 会在客户端只带模型、不带 provider 时重新绑定已验证的 DeepSeek provider，
+但不会改写 SQLite 或 rollout 中已经保存的线程元数据。这样手机 Remote 从后台恢复、重连
+或重新进入线程后，后续消息不会落回 ChatGPT 认证链路。跨 provider 的主动线程迁移仍不属于
+本工程范围。
 
 `thread/list` 恢复官方协议语义：调用方未传 `modelProviders`、传 `null` 或传空数组时均
 返回全部交互式 Provider；显式传入 `openai` 或 `deepseek` 时仍严格过滤。这样 Desktop 和
@@ -127,7 +132,7 @@ codex-provider uninstall
 
 若客户端版本与自定义发布不一致、精确标签尚未发布、源码结构改变或构建失败，稳定启动器
 会使用 ChatGPT.app 内置官方后端。它不会让旧自定义二进制冒充新版本。此时 GPT 继续可用，
-而 DeepSeek 新线程路由可能暂时不可用，直到补丁适配新版本。
+而 DeepSeek 新线程/恢复线程路由可能暂时不可用，直到补丁适配新版本。
 
 ## 验收标准
 
@@ -136,12 +141,14 @@ codex-provider uninstall
 1. Desktop GPT 新对话记录 `model_provider = openai`；
 2. Desktop DeepSeek 新对话记录 `model = deepseek-v4-*` 和
    `model_provider = deepseek`；
-3. `appserver-smoke` 记录 `model_provider = deepseek`，产生真实 `commandExecution`，隐藏
+3. Desktop/phone Remote 恢复 DeepSeek 线程后，`model_provider` 仍为 `deepseek`，后续 turn
+   不进入 ChatGPT WebSocket 或 ChatGPT 认证错误；
+4. `appserver-smoke` 记录 `model_provider = deepseek`，产生真实 `commandExecution`，隐藏
    SHA-256 挑战与最终消息匹配；
-4. `thread/list` 省略 `modelProviders` 与传空数组返回相同线程集合，且显式 Provider 过滤
+5. `thread/list` 省略 `modelProviders` 与传空数组返回相同线程集合，且显式 Provider 过滤
    仍然有效；
-5. 没有认证、unsupported model、fallback 或旧 JavaScript router 错误；
-6. 实际 app-server 来自当前版本匹配的 `current/codex`。
+6. 没有认证、unsupported model、fallback 或旧 JavaScript router 错误；
+7. 实际 app-server 来自当前版本匹配的 `current/codex`。
 
 ## 开发
 

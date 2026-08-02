@@ -6,6 +6,7 @@ Desktop or a new phone Remote thread.
 | Capability | Status | Adapter behavior |
 |---|---|---|
 | New-thread provider routing | Supported | Only `deepseek-v4-flash` becomes provider `deepseek` in shared `thread/start`. |
+| Remote resume provider continuity | Supported | `thread/resume` rebinds a missing/default provider to `deepseek` for Flash without rewriting stored thread metadata. |
 | Cross-provider history visibility | Supported | Omitted/null/empty `modelProviders` lists all interactive providers; explicit filters remain exact. |
 | Text and streaming output | Supported | Direct DeepSeek native Responses SSE. |
 | Thinking mode | Supported | Official catalog exposes `low`/`high`/`max`; Desktop requires `Max` in Settings → Configuration → Model features → Available reasoning efforts. |
@@ -20,7 +21,7 @@ Desktop or a new phone Remote thread.
 | Search tool | Official catalog enabled | Uses DeepSeek's current `web_search_tool_type = text` contract. |
 | Image/audio input | Not supported | The official Flash catalog is text-only. |
 | More than 128 functions | Upstream limit | Defer or disable unused MCP/plugin tools. |
-| Same-thread provider switching | Out of scope | New chats only; existing-thread provider migration remains a Codex product boundary. |
+| Same-thread provider switching | Out of scope | A DeepSeek thread remains DeepSeek across resume and later turns; deliberate OpenAI ↔ DeepSeek migration is not implemented. |
 | V4 Pro | Not integrated | Wait for official native Responses/Codex support, then revalidate before adding it. |
 
 ## Validation evidence
