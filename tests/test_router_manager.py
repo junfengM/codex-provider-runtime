@@ -36,6 +36,24 @@ fn example(params: ThreadStartParams) {
             None => Some(vec![self.config.model_provider_id.clone()]),
         };
 }
+
+async fn resume_example(params: ThreadResumeParams) {
+        let ThreadResumeParams {
+            model,
+            model_provider,
+        } = params;
+        let mut typesafe_overrides = ConfigOverrides::default();
+        let persisted_metadata = self
+            .load_and_apply_persisted_resume_metadata(
+                &thread_history,
+                &mut request_overrides,
+                &mut typesafe_overrides,
+            )
+            .await;
+
+        // Derive a Config using the same logic as new conversation, honoring overrides if provided.
+        let _ = (model, model_provider, persisted_metadata);
+}
 """
 
 
@@ -68,6 +86,7 @@ class PatchSourceTests(unittest.TestCase):
         self.assertIn("mod provider_route;", parent)
         self.assertIn(router_manager.CALL_MARKER, thread)
         self.assertIn(router_manager.HISTORY_CALL_MARKER, thread)
+        self.assertIn(router_manager.RESUME_CALL_MARKER, thread)
         self.assertNotIn(
             "Some(vec![self.config.model_provider_id.clone()])",
             thread,
@@ -105,6 +124,7 @@ class PatchSourceTests(unittest.TestCase):
         upgraded = thread.read_text(encoding="utf-8")
         self.assertIn(router_manager.CALL_MARKER, upgraded)
         self.assertIn(router_manager.HISTORY_CALL_MARKER, upgraded)
+        self.assertIn(router_manager.RESUME_CALL_MARKER, upgraded)
         self.assertIn("model_provider_filter_for_thread_list", upgraded)
 
     def test_updates_changed_patch_asset_in_an_existing_patched_tree(self) -> None:
@@ -170,6 +190,7 @@ class SupportMetadataTests(unittest.TestCase):
         patch_asset = PROJECT_ROOT / "runtime/patches/provider_route.rs"
         text = patch_asset.read_text(encoding="utf-8")
         self.assertIn("model_provider_for_new_thread", text)
+        self.assertIn("model_provider_for_resume", text)
         self.assertIn("model_provider_filter_for_thread_list", text)
         self.assertIn("omitted_thread_list_filter_includes_all_providers", text)
         self.assertIn("explicit_thread_list_filter_remains_authoritative", text)

@@ -125,12 +125,13 @@ compact-and-resume bridge, but it does not satisfy a requirement that the
 desktop dropdown itself perform the switch. Do not label such a helper as
 native support.
 
-For separate new chats, the installed Desktop build exposes a narrower local
-hook: `CODEX_CLI_PATH`. This project uses it to select a version-matched local
-app-server build whose shared `thread/start` handler normalizes only
-`deepseek-v4-flash` to
-the DeepSeek provider. Desktop and phone Remote both enter that handler. It
-does not alter `turn/start`, so it is not same-thread switching. See
+For separate new chats and Remote reconnects, the installed Desktop build
+exposes a narrower local hook: `CODEX_CLI_PATH`. This project uses it to select
+a version-matched local app-server build whose shared `thread/start` and
+`thread/resume` handlers normalize only `deepseek-v4-flash` to the DeepSeek
+provider. Desktop and phone Remote both enter that shared app-server. It does
+not alter the public `turn/start` shape or implement same-thread switching; a
+resumed DeepSeek thread simply retains its existing provider. See
 [architecture.md](architecture.md).
 
 ## Known limits
