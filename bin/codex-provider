@@ -31,6 +31,7 @@ codex-provider - manage the Codex multi-provider local runtime
 Usage:
   codex-provider prerequisites       Check local build/runtime prerequisites
   codex-provider keychain-set        Store the DeepSeek API key without echo
+  codex-provider keychain-status     Check Keychain presence without reading it
   codex-provider configure           Preserve ChatGPT and merge DeepSeek models
   codex-provider install             Configure, build, verify, and activate
   codex-provider status              Show configuration and runtime status
@@ -123,6 +124,9 @@ case "${1:-help}" in
         ;;
     keychain-set)
         bash "$config_tool" keychain-set
+        ;;
+    keychain-status)
+        bash "$config_tool" keychain-status
         ;;
     configure)
         bash "$config_tool" enable-both

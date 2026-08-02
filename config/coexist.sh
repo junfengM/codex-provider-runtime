@@ -5,6 +5,7 @@
 # 用法:
 #   coexist.sh status                查看当前模型/provider/目录状态
 #   coexist.sh keychain-set          在 macOS Keychain 中安全保存 DeepSeek API Key
+#   coexist.sh keychain-status       只检查 Keychain 项是否存在，不读取密钥
 #   coexist.sh enable-both           恢复 ChatGPT 默认，同时保留自定义模型可选
 #   coexist.sh enable-deepseek       将默认模型切到自定义目录中的第一个模型
 #   coexist.sh set-default-deepseek  enable-deepseek 的兼容别名
@@ -173,6 +174,7 @@ keychain_has_deepseek_key() {
 keychain_set() {
   [ "$(uname -s)" = "Darwin" ] || die "keychain-set 仅支持 macOS"
   command -v security >/dev/null 2>&1 || die "未找到 security 命令"
+  info "请只在你能看到的 macOS Terminal 中运行；不要把 API Key 输入到聊天、日志或配置文件。"
   info "请输入 DeepSeek API Key；输入不会回显。"
   security add-generic-password \
     -U \
@@ -183,6 +185,17 @@ keychain_set() {
     -w
   keychain_has_deepseek_key || die "Keychain 写入后无法读取 DeepSeek API Key"
   info "DeepSeek API Key 已安全保存到 macOS Keychain。"
+}
+
+keychain_status() {
+  [ "$(uname -s)" = "Darwin" ] || die "keychain-status 仅支持 macOS"
+  command -v security >/dev/null 2>&1 || die "未找到 security 命令"
+  if keychain_has_deepseek_key; then
+    info "DeepSeek API Keychain 项：已存在（密钥未读取）。"
+  else
+    info "DeepSeek API Keychain 项：不存在。"
+    return 1
+  fi
 }
 
 ensure_deepseek_provider() {
@@ -546,5 +559,6 @@ case "${1:-}" in
   validate) validate ;;
   history) history "${2:-all}" ;;
   test-deepseek) test_deepseek ;;
+  keychain-status) keychain_status ;;
   *) sed -n '2,18p' "$0" ;;
 esac

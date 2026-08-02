@@ -56,6 +56,7 @@ class CliTests(unittest.TestCase):
             "disable",
             "uninstall",
             "test-deepseek",
+            "keychain-status",
             "appserver-smoke",
         ):
             self.assertIn(command, result.stdout)

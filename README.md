@@ -73,8 +73,16 @@ cd codex-provider-runtime
 ./bin/codex-provider install
 ```
 
-`keychain-set` 会在终端中隐藏输入，不会把 API Key 写进仓库或聊天记录。安装完成后完全
-退出并重新打开 ChatGPT/Codex Desktop，再执行：
+`keychain-set` 必须在你能看到的 macOS Terminal 中执行：它会隐藏输入，并把 API Key
+保存到 macOS Keychain，不会写进仓库、配置文件、日志或聊天记录。不要把 API Key
+输入到 Codex/ChatGPT 聊天窗口，也不要通过 Agent 的不可见 stdin 录入。需要让 Agent
+确认凭据是否已经保存时，使用只检查存在性的命令：
+
+```bash
+./bin/codex-provider keychain-status
+```
+
+安装完成后完全退出并重新打开 ChatGPT/Codex Desktop，再执行：
 
 ```bash
 ./bin/codex-provider doctor --live
@@ -104,6 +112,7 @@ codex-provider doctor --live
 codex-provider update
 codex-provider verify
 codex-provider test-deepseek
+codex-provider keychain-status
 codex-provider appserver-smoke
 codex-provider history deepseek
 codex-provider logs 200
@@ -116,6 +125,7 @@ codex-provider uninstall
 - `enable`：解除禁用标记，但仍要求版本完全匹配；
 - `uninstall`：卸载 LaunchAgent 和环境入口，保留 releases、配置与 Keychain；
 - `test-deepseek`：本地 CLI 真实结构化工具调用闭环；
+- `keychain-status`：只检查 DeepSeek Keychain 项是否存在，不读取或打印 API Key；
 - `appserver-smoke`：使用手机 Remote 相同的 app-server 公共协议，执行隐藏 SHA-256
   挑战并验证本机 `commandExecution`；
 - `doctor --live`：组合结构检查与一次临时 DeepSeek 请求。
