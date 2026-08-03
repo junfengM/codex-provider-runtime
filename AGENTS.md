@@ -2,7 +2,7 @@
 
 ## Completion and publishing
 
-- Treat the private GitHub repository's default `main` branch as the source of truth.
+- Treat the public GitHub repository's default `main` branch as the source of truth.
 - For every completed code, documentation, skill, or compatibility change: work on an
   `agent/*` branch, run the relevant checks, open a pull request, merge it, and update
   the local `main` branch from `origin/main`.

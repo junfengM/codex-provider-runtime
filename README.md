@@ -65,7 +65,7 @@ codex-auto-review → deepseek-v4-flash（low effort）
 `ripgrep`，以及可访问官方 `openai/codex` 仓库。
 
 ```bash
-git clone <private-repository-url>
+git clone https://github.com/junfengM/codex-provider-runtime.git
 cd codex-provider-runtime
 
 ./bin/codex-provider prerequisites
