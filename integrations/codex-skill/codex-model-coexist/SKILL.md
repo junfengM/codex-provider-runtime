@@ -81,7 +81,7 @@ after validation.
 
 ## Use the reusable runtime as source of truth
 
-Prefer the private `codex-provider-runtime` project and its `codex-provider`
+Prefer the public `codex-provider-runtime` project and its `codex-provider`
 CLI. Do not reconstruct LaunchAgents, adapters, or patches from prose in this
 skill. Locate the project, then run read-only checks first:
 
