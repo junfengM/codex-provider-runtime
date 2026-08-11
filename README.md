@@ -133,8 +133,10 @@ codex-provider uninstall
 ## 安全升级模型
 
 更新器读取客户端内置 Codex 版本，只获取完全匹配的 `rust-v<version>` 官方标签。补丁
-锚点、Cargo.lock、路由/历史单元测试、两个 release 二进制、协议 smoke、版本号、签名和摘要全部
-通过后，才会原子切换 `current`。
+锚点、Cargo.lock、路由/历史单元测试、补丁版 Codex 二进制、Desktop 同版本内置且已签名的
+`codex-code-mode-host`、协议 smoke、版本号和摘要全部通过后，才会原子切换 `current`。
+独立 host 不包含 Provider 路由补丁，因此直接复用客户端随附版本，避免上游尚未发布
+对应 V8 预编译资产时阻塞路由升级。
 
 从仓库执行 `codex-provider update` 时会先暂停已加载的定时更新器并同步新版补丁资产，
 构建和验证结束后再重新加载。这样旧更新器无法在新 release 激活与支持文件同步之间把

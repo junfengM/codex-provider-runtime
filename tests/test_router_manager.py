@@ -212,6 +212,35 @@ class SupportMetadataTests(unittest.TestCase):
             router_manager.LEGACY_SUPPORT_NAMES,
         )
 
+    def test_bundled_code_mode_host_resolves_next_to_official_codex(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-manager-host-test-") as temporary:
+            resources = Path(temporary)
+            official = resources / "codex"
+            host = resources / "codex-code-mode-host"
+            official.touch()
+            host.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            host.chmod(0o755)
+            self.assertEqual(router_manager.bundled_code_mode_host(official), host)
+
+    def test_bundled_code_mode_host_must_be_executable(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-manager-host-test-") as temporary:
+            official = Path(temporary) / "codex"
+            official.touch()
+            with self.assertRaises(router_manager.RouterError):
+                router_manager.bundled_code_mode_host(official)
+
+    def test_release_build_reuses_bundled_code_mode_host(self) -> None:
+        source = Path(router_manager.__file__).read_text(encoding="utf-8")
+        build_block = source.split('cargo,\n            "build"', 1)[1].split(
+            "built_codex =", 1
+        )[0]
+        self.assertIn('"codex-cli"', build_block)
+        self.assertNotIn('"codex-code-mode-host"', build_block)
+        self.assertIn(
+            'built_host = bundled_code_mode_host(official_codex)',
+            source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

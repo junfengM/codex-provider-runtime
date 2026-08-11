@@ -61,8 +61,9 @@ policy until a second provider creates a real generalization requirement.
 ## Upgrade contract
 
 Activation requires an exact bundled-version/public-tag match, fixed patch
-anchors, locked dependency proof, provider-route and thread-list tests, release
-builds of both required binaries, protocol smoke, checksums, and an atomic
+anchors, locked dependency proof, provider-route and thread-list tests, the
+patched Codex build, the same-version bundled code-mode host, protocol smoke,
+checksums, and an atomic
 symlink switch.
 
 Structural upstream changes are a supported failure state. The updater must
