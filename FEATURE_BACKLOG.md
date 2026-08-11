@@ -9,6 +9,8 @@
 - [x] Reuse and checksum Desktop's same-version signed
   `codex-code-mode-host` when the upstream Rusty V8 archive is unavailable.
 
-## Pending
+## Completed validation
 
-- [ ] Run one explicit live DeepSeek API tool-call smoke after user approval.
+- [x] Run an explicit live DeepSeek API tool-call smoke after user approval.
+- [x] Validate the public app-server path with a structured command execution
+  and hidden SHA-256 challenge.

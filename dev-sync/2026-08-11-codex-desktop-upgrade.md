@@ -24,9 +24,12 @@ DeepSeek Provider Runtime 已为 Desktop 内置 Codex
   全 Provider 历史列表语义通过。
 - 安装态：`codex-provider verify` 通过；GUI LaunchAgent 已持久化
   `CODEX_CLI_PATH`。
+- 真实 API：显式 DeepSeek 路由执行 Shell 工具并返回
+  `CODEX_DEEPSEEK_TOOL_OK`；公共 app-server 路径记录 Provider
+  `deepseek`，完成结构化 `commandExecution`，隐藏 SHA-256 挑战匹配。
 - 发布：兼容修复已通过 PR #6 合并到 `main`。
 
 ## 剩余事项
 
 - 完全退出并重新打开 Codex Desktop，使当前 GUI 进程加载新版运行时。
-- 真实 DeepSeek API 工具调用需要用户明确授权后执行。
+- 完全重启后的 Desktop 模型下拉框新对话可作为人工界面复核，不影响自动化验收结论。
