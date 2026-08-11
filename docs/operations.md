@@ -68,6 +68,12 @@ The updater rebuilds the exact Codex tag only when the bundled backend changes,
 then the stable launcher atomically adopts the matching release. DeepSeek Flash
 continues to use the official native Responses endpoint directly.
 
+Only the patched Codex CLI/app-server is rebuilt. The release copies the
+executable `codex-code-mode-host` bundled with the same Desktop update and
+records its checksum. The host contains no provider-routing patch, and reusing
+the signed bundled binary prevents a missing upstream Rusty V8 archive from
+blocking an otherwise compatible update.
+
 After a DeepSeek API/model announcement, compare the official Codex integration
 page and setup script with `docs/compatibility.md`, then run
 `./bin/codex-provider configure` and the two live smoke tests. Catalog

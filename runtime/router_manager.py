@@ -1048,6 +1048,15 @@ def verify_existing_release(release: Path, manifest: dict, version: str) -> None
         print("Certified existing release protocol routing")
 
 
+def bundled_code_mode_host(official_codex: Path) -> Path:
+    host = official_codex.with_name("codex-code-mode-host")
+    if not host.is_file() or not os.access(host, os.X_OK):
+        raise RouterError(
+            f"Bundled code-mode host is unavailable or not executable: {host}"
+        )
+    return host
+
+
 def build_release(
     install_root: Path,
     official_codex: Path,
@@ -1106,22 +1115,19 @@ def build_release(
             "--locked",
             "-p",
             "codex-cli",
-            "-p",
-            "codex-code-mode-host",
         ],
         cwd=cargo_root,
         env=build_env,
     )
 
     built_codex = cargo_target / "release" / "codex"
-    built_host = cargo_target / "release" / "codex-code-mode-host"
+    built_host = bundled_code_mode_host(official_codex)
     if codex_version(built_codex) != version:
         raise RouterError("Built Codex version does not match the bundled client version")
     run([built_host, "--help"], capture=True)
     smoke_result = protocol_smoke_suite(built_codex)
     print("Protocol smoke:", json.dumps(smoke_result, ensure_ascii=False, sort_keys=True))
     sign_if_available(built_codex)
-    sign_if_available(built_host)
 
     staging = install_root / "releases" / f".staging-{release_name}-{os.getpid()}"
     staging.mkdir(parents=True, exist_ok=False)
@@ -1139,6 +1145,7 @@ def build_release(
         "patch_sha256": patch_digest,
         "custom_sha256": sha256(staging / "codex"),
         "code_mode_host_sha256": sha256(staging / "codex-code-mode-host"),
+        "code_mode_host_source": "bundled-with-desktop",
         "patch": "deepseek-flash-route-resume-and-all-provider-history-v4",
         "built_at": utc_now(),
         "workspace_lock_versions_normalized": lock_versions_normalized,
@@ -1146,7 +1153,7 @@ def build_release(
         "tests": [
             "provider_route unit tests",
             "binary version smoke",
-            "code-mode-host help",
+            "bundled code-mode-host help and checksum",
             "app-server new/resumed routing and all-provider thread-list protocol smoke",
         ],
     }
