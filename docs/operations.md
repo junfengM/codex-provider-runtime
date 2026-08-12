@@ -68,6 +68,12 @@ The updater rebuilds the exact Codex tag only when the bundled backend changes,
 then the stable launcher atomically adopts the matching release. DeepSeek Flash
 continues to use the official native Responses endpoint directly.
 
+Before the offline workspace lock normalization and `--locked` build, the
+updater fetches the exact dependencies selected by the upstream lock file. This
+allows a fresh machine to acquire newly introduced registry or Git dependencies;
+the subsequent lock diff still fails closed if anything other than the expected
+workspace package version normalization changed.
+
 Only the patched Codex CLI/app-server is rebuilt. The release copies the
 executable `codex-code-mode-host` bundled with the same Desktop update and
 records its checksum. The host contains no provider-routing patch, and reusing
