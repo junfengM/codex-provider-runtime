@@ -326,9 +326,12 @@ def normalize_release_lock(
     cargo: Path, cargo_root: Path, source: Path, version: str, env: Dict[str, str]
 ) -> int:
     # Public release tags update [workspace.package].version, while the checked-in
-    # lock can still contain the development sentinel 0.0.0. Ask Cargo to update
-    # only path/workspace packages and stay offline, then strictly prove that no
-    # registry or git dependency changed before returning to --locked builds.
+    # lock can still contain the development sentinel 0.0.0. Fetch the exact
+    # locked dependencies first so a newly introduced registry or git source is
+    # available on a clean machine. Cargo may normalize the workspace versions
+    # during fetch; the final diff check below still rejects every external
+    # dependency change before returning to --locked builds.
+    run([cargo, "fetch"], cwd=cargo_root, env=env)
     run([cargo, "update", "--workspace", "--offline"], cwd=cargo_root, env=env)
     diff = output(
         ["git", "-C", source, "diff", "--unified=0", "--", "codex-rs/Cargo.lock"]

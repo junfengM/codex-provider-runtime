@@ -18,7 +18,7 @@ anchors as fixed. When better verified support appears, update runtime code,
 tests, compatibility docs, and this skill together; do not let an older skill
 rule block a safer native mechanism.
 
-Current verified baseline (2026-08-02): only `deepseek-v4-flash` is integrated,
+Current verified baseline (2026-08-12): only `deepseek-v4-flash` is integrated,
 using DeepSeek's native Responses API directly. V4 Pro remains absent until
 official support and the same structured-tool acceptance checks pass. This is a
 dated baseline, not a permanent prohibition.

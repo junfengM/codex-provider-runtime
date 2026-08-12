@@ -58,7 +58,7 @@ only when same-thread switching is in scope.
 
 ## Current verified baseline
 
-Last verified: 2026-08-02.
+Last verified: 2026-08-12.
 
 - Integrate only `deepseek-v4-flash`.
 - Send it directly to `https://api.deepseek.com/responses` through the Codex

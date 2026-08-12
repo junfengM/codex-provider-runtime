@@ -156,6 +156,19 @@ class PatchSourceTests(unittest.TestCase):
 
 
 class LockDiffTests(unittest.TestCase):
+    def test_normalization_prefetches_before_offline_workspace_update(self) -> None:
+        source = Path(router_manager.__file__).read_text(encoding="utf-8")
+        block = source.split("def normalize_release_lock(", 1)[1].split(
+            "\n\ndef ensure_source_checkout", 1
+        )[0]
+        fetch_index = block.index('run([cargo, "fetch"]')
+        offline_index = block.index(
+            'run([cargo, "update", "--workspace", "--offline"]'
+        )
+        diff_index = block.index('"diff", "--unified=0"')
+        self.assertLess(fetch_index, offline_index)
+        self.assertLess(offline_index, diff_index)
+
     def test_accepts_only_workspace_version_changes(self) -> None:
         diff = """--- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock

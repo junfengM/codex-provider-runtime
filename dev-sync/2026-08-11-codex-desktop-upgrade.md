@@ -5,7 +5,7 @@
 ## 结论
 
 DeepSeek Provider Runtime 已为 Desktop 内置 Codex
-`0.147.0-alpha.6.5` 重新构建并激活。
+`0.147.0-alpha.6.6` 重新构建并激活。
 
 ## 关键变化
 
@@ -14,10 +14,13 @@ DeepSeek Provider Runtime 已为 Desktop 内置 Codex
   `codex-code-mode-host` 源码构建返回 HTTP 404。
 - 更新器改为只构建需要 Provider 补丁的 Codex CLI/app-server，并复用 Desktop
   随附的同版本、已签名 code-mode host，同时记录其 SHA-256。
+- `alpha.6.6` 新增了本机缓存中不存在的 Git `crossterm` 依赖；更新器现在
+  会在离线工作区锁文件规范化前预取官方锁定依赖，之后仍严格拒绝任何
+  外部依赖锁文件漂移。
 
 ## 验证
 
-- 仓库：`make check`，26 项测试通过，Shell 语法与 secret scan 通过。
+- 仓库：`make check`，27 项测试通过，Shell 语法与 secret scan 通过。
 - 上游补丁：9 项 Provider 路由测试通过。
 - Release：版本、签名和 SHA-256 校验通过。
 - 协议 smoke：DeepSeek 新建与冷恢复保持 `deepseek`；GPT 保持 `openai`；
@@ -27,7 +30,8 @@ DeepSeek Provider Runtime 已为 Desktop 内置 Codex
 - 真实 API：显式 DeepSeek 路由执行 Shell 工具并返回
   `CODEX_DEEPSEEK_TOOL_OK`；公共 app-server 路径记录 Provider
   `deepseek`，完成结构化 `commandExecution`，隐藏 SHA-256 挑战匹配。
-- 发布：兼容修复已通过 PR #6 合并到 `main`。
+- 发布：`alpha.6.5` 兼容修复已通过 PR #6 合并到 `main`；
+  `alpha.6.6` 的依赖预取修复通过 PR #9 发布。
 
 ## 剩余事项
 
