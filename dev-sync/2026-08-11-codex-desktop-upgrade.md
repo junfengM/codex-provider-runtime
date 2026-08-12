@@ -31,7 +31,7 @@ DeepSeek Provider Runtime 已为 Desktop 内置 Codex
   `CODEX_DEEPSEEK_TOOL_OK`；公共 app-server 路径记录 Provider
   `deepseek`，完成结构化 `commandExecution`，隐藏 SHA-256 挑战匹配。
 - 发布：`alpha.6.5` 兼容修复已通过 PR #6 合并到 `main`；
-  `alpha.6.6` 的依赖预取修复待本次 PR 合并。
+  `alpha.6.6` 的依赖预取修复通过 PR #9 发布。
 
 ## 剩余事项
 
