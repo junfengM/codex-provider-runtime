@@ -7,9 +7,11 @@
 - [x] Integrate DeepSeek V4 Pro-0813 into the merged Codex catalog, native
   new/resume provider route, protocol smoke tests, and bundled operator skills.
 - [x] Rebuild the native DeepSeek provider runtime for Codex Desktop
-  `26.803.61601` / Codex `0.147.0-alpha.6.5`.
+  `26.803.61601` / Codex `0.147.0-alpha.6.6`.
 - [x] Reuse and checksum Desktop's same-version signed
   `codex-code-mode-host` when the upstream Rusty V8 archive is unavailable.
+- [x] Prefetch exact upstream lock-file dependencies before offline workspace
+  normalization while continuing to reject external dependency lock drift.
 
 ## Completed validation
 

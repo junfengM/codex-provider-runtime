@@ -21,6 +21,11 @@ tests the native patch, installs generic LaunchAgents, and activates the stable
 launcher. It may download source and compile Rust, so use it only for an
 explicit install request.
 
+The build fetches the exact upstream lock-file dependencies before its offline
+workspace-version normalization. It then rejects any lock diff beyond expected
+workspace package version changes, so a newly introduced Git dependency can be
+cached without weakening the fail-closed dependency contract.
+
 `doctor` is local/read-only. `doctor --live` performs one ephemeral DeepSeek API
 request. `disable` creates a fail-safe marker and takes effect after Desktop is
 restarted. `uninstall` unloads support jobs and moves their plists to a backup;
