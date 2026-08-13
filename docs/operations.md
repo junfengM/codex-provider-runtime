@@ -77,7 +77,7 @@ blocking an otherwise compatible update.
 After a DeepSeek API/model announcement, compare the official Codex integration
 page and setup script with `docs/compatibility.md`, then run
 `./bin/codex-provider configure` and the two live smoke tests. Catalog
-validation fails closed if the known V4-Flash-0731 compatibility fields drift.
+validation fails closed if the known V4 Flash/Pro compatibility fields drift.
 
 ## Emergency fallback
 

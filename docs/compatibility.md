@@ -1,12 +1,12 @@
 # DeepSeek compatibility matrix
 
-This matrix describes the behavior of DeepSeek V4 Flash-0731 when selected in Codex
-Desktop or a new phone Remote thread.
+This matrix describes DeepSeek V4 Flash-0731 and V4 Pro-0813 in Codex Desktop
+or a new phone Remote thread.
 
 | Capability | Status | Adapter behavior |
 |---|---|---|
-| New-thread provider routing | Supported | Only `deepseek-v4-flash` becomes provider `deepseek` in shared `thread/start`. |
-| Remote resume provider continuity | Supported | `thread/resume` rebinds a missing/default provider to `deepseek` for Flash without rewriting stored thread metadata. |
+| New-thread provider routing | Supported | The exact supported slugs `deepseek-v4-flash` and `deepseek-v4-pro` become provider `deepseek` in shared `thread/start`. |
+| Remote resume provider continuity | Supported | `thread/resume` rebinds a missing/default provider to `deepseek` for Flash or Pro without rewriting stored thread metadata. |
 | Cross-provider history visibility | Supported | Omitted/null/empty `modelProviders` lists all interactive providers; explicit filters remain exact. |
 | Text and streaming output | Supported | Direct DeepSeek native Responses SSE. |
 | Thinking mode | Supported | Official catalog exposes `low`/`high`/`max`; Desktop requires `Max` in Settings → Configuration → Model features → Available reasoning efforts. |
@@ -19,10 +19,10 @@ Desktop or a new phone Remote thread.
 | Auto-review | Supported with trust change | `auto_review_model_override` routes the reviewer to Flash with low effort. |
 | Long-context compaction | Supported locally | Non-OpenAI providers use Codex local compaction, not `/responses/compact`. |
 | Search tool | Official catalog enabled | Uses DeepSeek's current `web_search_tool_type = text` contract. |
-| Image/audio input | Not supported | The official Flash catalog is text-only. |
+| Image/audio input | Not supported | Both DeepSeek catalog entries are text-only. |
 | More than 128 functions | Upstream limit | Defer or disable unused MCP/plugin tools. |
 | Same-thread provider switching | Out of scope | A DeepSeek thread remains DeepSeek across resume and later turns; deliberate OpenAI ↔ DeepSeek migration is not implemented. |
-| V4 Pro | Not integrated | Wait for official native Responses/Codex support, then revalidate before adding it. |
+| V4 Pro | Supported | Official Pro-0813 exposes Responses and tools; the current Codex client completed a provider-explicit structured tool loop on 2026-08-13. |
 
 ## Validation evidence
 
@@ -36,12 +36,12 @@ the final message with the independently calculated hash.
 
 ## Upstream contract
 
-Checked against DeepSeek's official Codex setup and API documentation on
-2026-08-01. The catalog follows the V4-Flash-0731 Codex contract: native
+Checked against DeepSeek's official API documentation and live protocol behavior on
+2026-08-13. The catalog follows the shared V4 Flash/Pro contract: native
 Responses, 1,048,576-token context, `low`/`high`/`max` effort, normal
 `shell_command` tools, parallel calls, freeform apply-patch, and non-lite
-Responses. V4 Pro is intentionally excluded until DeepSeek documents native
-Responses support for it and live acceptance passes.
+Responses. Pro remains model-exact rather than routing arbitrary future
+`deepseek-*` identifiers.
 
 Codex Desktop independently filters the reasoning levels shown in its model picker.
 Its default enabled-level set can omit `max`, so a provider that advertises only

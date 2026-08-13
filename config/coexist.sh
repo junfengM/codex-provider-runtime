@@ -247,8 +247,9 @@ deepseek_catalog_matches_current_contract() {
   local catalog="$1"
   jq -e '
     ([.models[] | select(.slug == "deepseek-v4-flash")][0]) as $flash
+    | ([.models[] | select(.slug == "deepseek-v4-pro")][0]) as $pro
     | ($flash != null)
-      and ([.models[] | select(.slug == "deepseek-v4-pro")] | length == 0)
+      and ($pro != null)
       and ($flash.context_window == 1048576)
       and ($flash.max_context_window == 1048576)
       and ($flash.support_verbosity == true)
@@ -261,6 +262,18 @@ deepseek_catalog_matches_current_contract() {
       and ($flash.supports_search_tool == true)
       and ($flash.auto_review_model_override == "deepseek-v4-flash")
       and ([$flash.supported_reasoning_levels[].effort] == ["low", "high", "max"])
+      and ($pro.context_window == 1048576)
+      and ($pro.max_context_window == 1048576)
+      and ($pro.support_verbosity == true)
+      and ($pro.apply_patch_tool_type == "freeform")
+      and ($pro.web_search_tool_type == "text")
+      and ($pro.supports_parallel_tool_calls == true)
+      and ($pro.tool_mode == null)
+      and ($pro.use_responses_lite == false)
+      and ($pro.shell_type == "shell_command")
+      and ($pro.supports_search_tool == true)
+      and ($pro.auto_review_model_override == "deepseek-v4-flash")
+      and ([$pro.supported_reasoning_levels[].effort] == ["low", "high", "max"])
   ' "$catalog" >/dev/null
 }
 
@@ -274,9 +287,23 @@ derive_deepseek_catalog() {
   jq '
     first(.models[] | select(.visibility == "list" or .visibility == null)) as $base
     | {
-        models: [
-          ($base
-            | .slug = "deepseek-v4-flash"
+        models: (
+          [
+            {
+              slug: "deepseek-v4-flash",
+              display_name: "DeepSeek-V4-Flash",
+              description: "Fast frontier agentic coding model.",
+              priority: 1
+            },
+            {
+              slug: "deepseek-v4-pro",
+              display_name: "DeepSeek-V4-Pro",
+              description: "Most capable DeepSeek model for complex agentic coding.",
+              priority: 2
+            }
+          ]
+          | map(. as $identity | ($base
+            | .slug = $identity.slug
             | .prefer_websockets = false
             | .support_verbosity = true
             | .default_verbosity = "low"
@@ -298,8 +325,8 @@ derive_deepseek_catalog() {
             | .comp_hash = "3000"
             | .reasoning_summary_format = "experimental"
             | .default_reasoning_summary = "none"
-            | .display_name = "DeepSeek-V4-Flash"
-            | .description = "Latest frontier agentic coding model."
+            | .display_name = $identity.display_name
+            | .description = $identity.description
             | .default_reasoning_level = "high"
             | .supported_reasoning_levels = [
                 {effort: "low", description: "Fast responses with lighter reasoning"},
@@ -312,14 +339,14 @@ derive_deepseek_catalog() {
             | .supported_in_api = true
             | .availability_nux = null
             | .upgrade = null
-            | .priority = 1
+            | .priority = $identity.priority
             | .additional_speed_tiers = []
             | .service_tiers = []
             | .experimental_supported_tools = []
             | .supports_search_tool = true
             | .default_service_tier = null
-            | .supports_reasoning_summaries = true)
-        ]
+            | .supports_reasoning_summaries = true))
+        )
       }
   ' "$CACHE" > "$derived"
 
@@ -337,10 +364,10 @@ derive_deepseek_catalog() {
   jq -e '
     (.models | length > 0)
     and any(.models[]; .slug == "deepseek-v4-flash")
-    and ([.models[] | select(.slug == "deepseek-v4-pro")] | length == 0)
+    and any(.models[]; .slug == "deepseek-v4-pro")
   ' "$merged" >/dev/null || die "无法生成完整的 DeepSeek V4 模型目录"
   deepseek_catalog_matches_current_contract "$merged" \
-    || die "生成的模型目录不符合 DeepSeek 2026-07-31 Codex 配置契约"
+    || die "生成的模型目录不符合 DeepSeek 2026-08-13 Codex 配置契约"
   install -m 0600 "$merged" "$CUSTOM"
   rm -f "$derived" "$merged"
   info "已准备 DeepSeek 模型目录 ${CUSTOM}。"
@@ -482,7 +509,7 @@ validate() {
   catalog="$(config_get model_catalog_json)"
   [ -f "$catalog" ] || die "模型目录不存在: $catalog"
   deepseek_catalog_matches_current_contract "$catalog" \
-    || die "DeepSeek 模型目录未对齐 2026-07-31 官方 Codex 配置"
+    || die "DeepSeek 模型目录未对齐 2026-08-13 官方 Codex 配置"
   info "== codex debug models =="
   models="$("$CODEX_BIN" debug models 2>/dev/null)"
   printf '%s\n' "$models" | jq -e 'any(.models[]; .slug | startswith("gpt-"))' >/dev/null \
@@ -524,7 +551,11 @@ history() {
 
 test_deepseek() {
   [ -n "$CODEX_BIN" ] || die "未找到 codex CLI"
-  local output
+  local model="${1:-deepseek-v4-flash}" output
+  case "$model" in
+    deepseek-v4-flash|deepseek-v4-pro) ;;
+    *) die "测试模型只支持 deepseek-v4-flash 或 deepseek-v4-pro" ;;
+  esac
   if ! output="$(
     "$CODEX_BIN" exec \
       --ephemeral \
@@ -533,7 +564,7 @@ test_deepseek() {
       -s read-only \
       -c 'model_provider="deepseek"' \
       -c 'model_reasoning_effort="high"' \
-      -m deepseek-v4-flash \
+      -m "$model" \
       'You must use the available shell execution tool to run printf CODEX_DEEPSEEK_TOOL_OK. After the tool result, reply with exactly: CODEX_DEEPSEEK_TOOL_OK' 2>&1
   )"; then
     printf '%s\n' "$output" >&2
@@ -542,7 +573,7 @@ test_deepseek() {
   printf '%s\n' "$output"
   printf '%s\n' "$output" | grep -q 'CODEX_DEEPSEEK_TOOL_OK' \
     || die "响应中缺少 CODEX_DEEPSEEK_TOOL_OK"
-  info "DeepSeek 显式路由与结构化工具调用测试通过。"
+  info "$model 显式路由与结构化工具调用测试通过。"
 }
 
 case "${1:-}" in
@@ -558,7 +589,7 @@ case "${1:-}" in
   restore) restore "${2:-}" ;;
   validate) validate ;;
   history) history "${2:-all}" ;;
-  test-deepseek) test_deepseek ;;
+  test-deepseek) test_deepseek "${2:-}" ;;
   keychain-status) keychain_status ;;
   *) sed -n '2,18p' "$0" ;;
 esac

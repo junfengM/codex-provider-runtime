@@ -37,11 +37,11 @@ DeepSeek as a custom provider and route only validated model names at new-thread
 creation and Remote resume. On macOS, prefer command-backed Keychain authentication; elsewhere
 use an environment key. Never copy the secret into a catalog or repository.
 
-Current verified DeepSeek provider contract (2026-08-01):
+Current verified DeepSeek provider contract (2026-08-13):
 
 - base URL `https://api.deepseek.com`;
 - wire API `responses`;
-- only `deepseek-v4-flash` integrated;
+- `deepseek-v4-flash` and `deepseek-v4-pro` integrated;
 - native structured tools, no local protocol gateway.
 
 This contract must be rechecked after upstream announcements.
@@ -53,7 +53,7 @@ then overwrite every provider-documented capability field. Validate the final
 entry as a contract, not just by slug presence. Remove stale DeepSeek entries
 that are no longer supported by the runtime.
 
-For the current Flash baseline, validate context window, reasoning efforts,
+For the current Flash/Pro baseline, validate context window, reasoning efforts,
 tool mode, shell type, apply-patch type, search type, parallel tool support,
 Responses-lite setting, text modality, and auto-review override. Treat all
 values as dated upstream metadata.

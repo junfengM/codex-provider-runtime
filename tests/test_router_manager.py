@@ -192,6 +192,8 @@ class SupportMetadataTests(unittest.TestCase):
         self.assertIn("model_provider_for_new_thread", text)
         self.assertIn("model_provider_for_resume", text)
         self.assertIn("model_provider_filter_for_thread_list", text)
+        self.assertIn('"deepseek-v4-pro"', text)
+        self.assertIn("routes_pro_for_new_and_resumed_threads", text)
         self.assertIn("omitted_thread_list_filter_includes_all_providers", text)
         self.assertIn("explicit_thread_list_filter_remains_authoritative", text)
 

@@ -68,7 +68,7 @@ class DeepSeekCatalogContractTests(unittest.TestCase):
             catalog = json.loads((codex_home / "models-coexist.json").read_text())
             models = {model["slug"]: model for model in catalog["models"]}
             flash = models["deepseek-v4-flash"]
-            self.assertNotIn("deepseek-v4-pro", models)
+            pro = models["deepseek-v4-pro"]
             self.assertEqual(flash["context_window"], 1048576)
             self.assertTrue(flash["support_verbosity"])
             self.assertIsNone(flash["tool_mode"])
@@ -77,6 +77,14 @@ class DeepSeekCatalogContractTests(unittest.TestCase):
             self.assertEqual(flash["auto_review_model_override"], "deepseek-v4-flash")
             self.assertEqual(
                 [level["effort"] for level in flash["supported_reasoning_levels"]],
+                ["low", "high", "max"],
+            )
+            self.assertEqual(pro["context_window"], 1048576)
+            self.assertEqual(pro["max_context_window"], 1048576)
+            self.assertEqual(pro["display_name"], "DeepSeek-V4-Pro")
+            self.assertEqual(pro["auto_review_model_override"], "deepseek-v4-flash")
+            self.assertEqual(
+                [level["effort"] for level in pro["supported_reasoning_levels"]],
                 ["low", "high", "max"],
             )
 

@@ -486,7 +486,8 @@ def protocol_smoke(binary: Path) -> dict:
                 providers = {}
                 for request_id, model, expected in (
                     (2, "deepseek-v4-flash", "deepseek"),
-                    (3, "gpt-5.6-sol", "openai"),
+                    (3, "deepseek-v4-pro", "deepseek"),
+                    (4, "gpt-5.6-sol", "openai"),
                 ):
                     send_json_line(
                         process,
@@ -812,10 +813,14 @@ def resumed_thread_provider_smoke(binary: Path) -> dict:
             stop_server(resumed)
 
 
-def app_server_deepseek_tool_smoke(binary: Path, cwd: Path) -> dict:
+def app_server_deepseek_tool_smoke(
+    binary: Path, cwd: Path, model: str = "deepseek-v4-flash"
+) -> dict:
     """Exercise the same public app-server path used by a new Remote thread."""
     if not cwd.is_dir():
         raise RouterError(f"app-server smoke cwd is not a directory: {cwd}")
+    if model not in {"deepseek-v4-flash", "deepseek-v4-pro"}:
+        raise RouterError(f"unsupported DeepSeek smoke model: {model}")
     with tempfile.TemporaryDirectory(prefix="codex-app-server-live-smoke-") as temporary:
         temporary_path = Path(temporary)
         challenge_path = temporary_path / "challenge.bin"
@@ -865,7 +870,7 @@ def app_server_deepseek_tool_smoke(binary: Path, cwd: Path) -> dict:
                         "method": "thread/start",
                         "id": 2,
                         "params": {
-                            "model": "deepseek-v4-flash",
+                            "model": model,
                             "cwd": os.fspath(cwd),
                             "approvalPolicy": "never",
                             "sandbox": "read-only",
@@ -992,6 +997,7 @@ def app_server_deepseek_tool_smoke(binary: Path, cwd: Path) -> dict:
                     )
                 return {
                     "thread_id": thread_id,
+                    "model": model,
                     "model_provider": started.get("modelProvider"),
                     "structured_tool": structured_tool_type,
                     "structured_command": command_completed,
@@ -1146,7 +1152,7 @@ def build_release(
         "custom_sha256": sha256(staging / "codex"),
         "code_mode_host_sha256": sha256(staging / "codex-code-mode-host"),
         "code_mode_host_source": "bundled-with-desktop",
-        "patch": "deepseek-flash-route-resume-and-all-provider-history-v4",
+        "patch": "deepseek-v4-flash-pro-route-resume-and-all-provider-history-v5",
         "built_at": utc_now(),
         "workspace_lock_versions_normalized": lock_versions_normalized,
         "protocol_smoke": smoke_result,
@@ -1491,6 +1497,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     live_smoke = subparsers.add_parser("app-server-live-smoke")
     live_smoke.add_argument("--binary", type=Path, required=True)
     live_smoke.add_argument("--cwd", type=Path, default=Path.cwd())
+    live_smoke.add_argument(
+        "--model",
+        choices=("deepseek-v4-flash", "deepseek-v4-pro"),
+        default="deepseek-v4-flash",
+    )
     subparsers.add_parser("install-support")
     subparsers.add_parser("activate-support")
     subparsers.add_parser("disable")
@@ -1522,7 +1533,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(
                 json.dumps(
                     app_server_deepseek_tool_smoke(
-                        args.binary.resolve(), args.cwd.resolve()
+                        args.binary.resolve(), args.cwd.resolve(), args.model
                     ),
                     ensure_ascii=False,
                     indent=2,

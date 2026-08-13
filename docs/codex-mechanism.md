@@ -88,8 +88,8 @@ large, stale prompt in the skill.
 
 A complete validation has three separate checks:
 
-1. `codex debug models` contains both `gpt-*` and `deepseek-v4-flash`, and no
-   unintegrated DeepSeek model.
+1. `codex debug models` contains `gpt-*`, `deepseek-v4-flash`, and
+   `deepseek-v4-pro`, and no unintegrated DeepSeek model.
 2. ChatGPT login is still configured and forced API-only auth is absent.
 3. An ephemeral CLI request executes a real shell tool and returns
    `CODEX_DEEPSEEK_TOOL_OK`.
@@ -128,8 +128,9 @@ native support.
 For separate new chats and Remote reconnects, the installed Desktop build
 exposes a narrower local hook: `CODEX_CLI_PATH`. This project uses it to select
 a version-matched local app-server build whose shared `thread/start` and
-`thread/resume` handlers normalize only `deepseek-v4-flash` to the DeepSeek
-provider. Desktop and phone Remote both enter that shared app-server. It does
+`thread/resume` handlers normalize only `deepseek-v4-flash` and
+`deepseek-v4-pro` to the DeepSeek provider. Desktop and phone Remote both enter
+that shared app-server. It does
 not alter the public `turn/start` shape or implement same-thread switching; a
 resumed DeepSeek thread simply retains its existing provider. See
 [architecture.md](architecture.md).

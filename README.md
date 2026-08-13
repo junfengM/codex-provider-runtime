@@ -1,12 +1,12 @@
 # Codex Provider Runtime
 
 Codex Provider Runtime 是一个 macOS 本地运行时扩展。它让 Codex Desktop 和手机 Remote
-在新建或恢复 `deepseek-v4-flash` 对话时保持使用 DeepSeek provider，同时保留 ChatGPT 登录、
-GPT 模型和 OpenAI provider。
+在新建或恢复 `deepseek-v4-flash` / `deepseek-v4-pro` 对话时保持使用 DeepSeek
+provider，同时保留 ChatGPT 登录、GPT 模型和 OpenAI provider。
 
-当前版本只接入 DeepSeek V4 Flash-0731。它不修改或重新签名 `ChatGPT.app`，不重写历史
-会话 provider，也不支持在同一旧对话中跨 provider 切换。Flash 通过 DeepSeek 官方原生
-Responses API 直连；V4 Pro 在原生 Codex 支持正式发布前不加入模型目录。
+当前版本接入 DeepSeek V4 Flash-0731 与 V4 Pro-0813。它不修改或重新签名
+`ChatGPT.app`，不重写历史会话 provider，也不支持在同一旧对话中跨 provider 切换。
+两款模型均通过 DeepSeek 官方原生 Responses API 直连。
 
 ## 工程形态
 
@@ -35,11 +35,11 @@ app-server 路径，因此仅在 Desktop stdin 前增加 JavaScript shim 无法�
 本项目在 app-server 的公共协议层维护两项互不干扰的兼容修复。新线程和恢复线程都执行窄路由：
 
 ```text
-deepseek-v4-flash + provider 缺失/openai  → deepseek
-其他模型（包括尚未接入的 DeepSeek）      → 不改路由
-GPT 模型                                 → 保持 OpenAI
-显式第三方 provider                      → 保持调用方选择
-DeepSeek 线程恢复/后续 turn          → 继承 deepseek provider
+deepseek-v4-flash/pro + provider 缺失/openai → deepseek
+其他模型（包括尚未接入的 DeepSeek）          → 不改路由
+GPT 模型                                     → 保持 OpenAI
+显式第三方 provider                          → 保持调用方选择
+DeepSeek 线程恢复/后续 turn                   → 继承 deepseek provider
 ```
 
 `thread/resume` 会在客户端只带模型、不带 provider 时重新绑定已验证的 DeepSeek provider，
@@ -111,7 +111,7 @@ codex-provider doctor
 codex-provider doctor --live
 codex-provider update
 codex-provider verify
-codex-provider test-deepseek
+codex-provider test-deepseek deepseek-v4-pro
 codex-provider keychain-status
 codex-provider appserver-smoke
 codex-provider history deepseek
@@ -124,10 +124,10 @@ codex-provider uninstall
 - `disable`：保留安装与凭据，下一次启动回退官方后端；
 - `enable`：解除禁用标记，但仍要求版本完全匹配；
 - `uninstall`：卸载 LaunchAgent 和环境入口，保留 releases、配置与 Keychain；
-- `test-deepseek`：本地 CLI 真实结构化工具调用闭环；
+- `test-deepseek [model]`：指定 Flash 或 Pro 的本地 CLI 真实结构化工具调用闭环；
 - `keychain-status`：只检查 DeepSeek Keychain 项是否存在，不读取或打印 API Key；
-- `appserver-smoke`：使用手机 Remote 相同的 app-server 公共协议，执行隐藏 SHA-256
-  挑战并验证本机 `commandExecution`；
+- `appserver-smoke [model]`：指定 Flash 或 Pro，使用手机 Remote 相同的 app-server
+  公共协议，执行隐藏 SHA-256 挑战并验证本机 `commandExecution`；
 - `doctor --live`：组合结构检查与一次临时 DeepSeek 请求。
 
 ## 安全升级模型
