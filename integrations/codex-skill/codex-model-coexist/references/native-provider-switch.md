@@ -45,9 +45,10 @@ The installed Desktop build supports `CODEX_CLI_PATH`, and `thread/start` and
 open-source app-server can therefore make new and resumed entry points
 provider-aware without modifying the signed app:
 
-- normalize only currently validated model names (as of 2026-08-01,
-  `deepseek-v4-flash`) to provider `deepseek` inside the shared `thread/start`
-  and `thread/resume` handlers when the provider is missing or `openai`;
+- normalize only currently validated model names (as of 2026-08-13,
+  `deepseek-v4-flash` and `deepseek-v4-pro`) to provider `deepseek` inside the
+  shared `thread/start` and `thread/resume` handlers when the provider is
+  missing or `openai`;
 - leave GPT new threads on the default OpenAI provider;
 - preserve explicit third-party providers;
 - leave `turn/start`'s public shape untouched and inherit the active thread

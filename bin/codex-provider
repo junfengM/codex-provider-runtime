@@ -38,11 +38,11 @@ Usage:
   codex-provider doctor [--live]     Validate config, routing, and optional API call
   codex-provider update              Reconcile a release for the bundled Codex
   codex-provider verify              Run local config and protocol checks
-  codex-provider appserver-smoke     Test the Remote/app-server DeepSeek tool path
+  codex-provider appserver-smoke [model] Test the Remote/app-server DeepSeek tool path
   codex-provider enable              Enable a verified version-matched release
   codex-provider disable             Fall back to the official bundled backend
   codex-provider uninstall           Unload support jobs; preserve state and secrets
-  codex-provider test-deepseek       Make one explicit ephemeral DeepSeek request
+  codex-provider test-deepseek [model] Make one explicit ephemeral DeepSeek request
   codex-provider history [provider]  Audit local thread provider metadata
   codex-provider logs [lines]        Show updater and launcher logs
   codex-provider self-test           Run repository tests and secret checks
@@ -166,7 +166,8 @@ case "${1:-help}" in
     appserver-smoke)
         manager_run app-server-live-smoke \
             --binary "$install_root/current/codex" \
-            --cwd "$PWD"
+            --cwd "$PWD" \
+            --model "${2:-deepseek-v4-flash}"
         ;;
     enable)
         manager_run enable
@@ -178,7 +179,7 @@ case "${1:-help}" in
         manager_run uninstall-support
         ;;
     test-deepseek)
-        bash "$config_tool" test-deepseek
+        bash "$config_tool" test-deepseek "${2:-}"
         ;;
     history)
         bash "$config_tool" history "${2:-all}"

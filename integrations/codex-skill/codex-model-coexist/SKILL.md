@@ -58,15 +58,13 @@ only when same-thread switching is in scope.
 
 ## Current verified baseline
 
-Last verified: 2026-08-12.
+Last verified: 2026-08-13.
 
-- Integrate only `deepseek-v4-flash`.
-- Send it directly to `https://api.deepseek.com/responses` through the Codex
+- Integrate `deepseek-v4-flash` and `deepseek-v4-pro`.
+- Send both directly to `https://api.deepseek.com/responses` through the Codex
   native Responses client.
-- Do not expose or route V4 Pro until official native Codex/Responses support
-  exists and the same acceptance tests pass.
-- Route new and resumed Flash threads only; leave GPT, unknown DeepSeek models,
-  and explicit third-party providers unchanged.
+- Route new and resumed Flash/Pro threads only; leave GPT, unknown DeepSeek
+  models, and explicit third-party providers unchanged.
 - Map `codex-auto-review` to Flash and prefer `low` effort while this remains the
   selected cost/performance policy.
 - Keep the retired loopback gateway unloaded. It is not part of the current
@@ -103,9 +101,10 @@ request is appropriate. The app-server smoke must observe provider `deepseek`,
 a structured `commandExecution`, and an independently checked hidden result.
 
 Fully quit and reopen Codex Desktop after catalog or backend activation. Verify
-separate new GPT and Flash chats. When phone access is in scope, verify one new
-phone Remote Flash chat and then resume that same thread before sending another
-turn; both lifecycle paths must retain `model_provider = deepseek`.
+separate new GPT and supported DeepSeek chats. When phone access is in scope,
+verify one new phone Remote DeepSeek chat and then resume that same thread
+before sending another turn; both lifecycle paths must retain
+`model_provider = deepseek`.
 
 ## Authentication and catalog rules
 

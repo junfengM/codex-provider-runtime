@@ -1,6 +1,6 @@
 // This file is injected into codex-app-server by router_manager.py.
-// Integrated model contract: DeepSeek V4 Flash-0731 only.
-// Keep the routing policy deliberately narrow: only new V4 Flash threads whose
+// Integrated model contract: DeepSeek V4 Flash-0731 and V4 Pro-0813.
+// Keep the routing policy deliberately narrow: only supported V4 threads whose
 // caller omitted a provider (or incorrectly supplied the ChatGPT default
 // provider) are redirected. Explicit third-party providers remain authoritative.
 pub(super) fn model_provider_for_new_thread(
@@ -25,7 +25,8 @@ fn model_provider_for_supported_model(
     model: Option<&str>,
     model_provider: Option<String>,
 ) -> Option<String> {
-    let is_deepseek_model = model == Some("deepseek-v4-flash");
+    let is_deepseek_model =
+        matches!(model, Some("deepseek-v4-flash" | "deepseek-v4-pro"));
     let has_default_provider = matches!(model_provider.as_deref(), None | Some("openai"));
 
     if is_deepseek_model && has_default_provider {
@@ -86,10 +87,25 @@ mod tests {
     }
 
     #[test]
-    fn does_not_route_unintegrated_deepseek_models() {
+    fn routes_pro_for_new_and_resumed_threads() {
         assert_eq!(
             model_provider_for_new_thread(
                 Some("deepseek-v4-pro"),
+                Some("openai".to_string())
+            ),
+            Some("deepseek".to_string())
+        );
+        assert_eq!(
+            model_provider_for_resume(Some("deepseek-v4-pro"), None),
+            Some("deepseek".to_string())
+        );
+    }
+
+    #[test]
+    fn does_not_route_unknown_deepseek_models() {
+        assert_eq!(
+            model_provider_for_new_thread(
+                Some("deepseek-v5-preview"),
                 Some("openai".to_string())
             ),
             Some("openai".to_string())

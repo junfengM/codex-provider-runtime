@@ -4,8 +4,8 @@
 
 Use the native router when Desktop and phone Remote must start or resume a
 supported third-party model through its provider while GPT remains on OpenAI.
-Keep the route table evidence-driven and model-exact. The 2026-08-02 verified
-policy routes only `deepseek-v4-flash` to `deepseek`.
+Keep the route table evidence-driven and model-exact. The 2026-08-13 verified
+policy routes `deepseek-v4-flash` and `deepseek-v4-pro` to `deepseek`.
 
 It normalizes provider identity at new-thread creation and Remote resume. It
 does not implement deliberate same-thread provider switching.
@@ -42,7 +42,7 @@ Require all of the following before activation:
    every visible but unsupported model family.
 5. Build the required Codex binaries with the pinned toolchain and lockfile.
 6. Record official binary, patch asset, source commit, and custom binary hashes.
-7. Run protocol smoke tests for both DeepSeek Flash/GPT routing, DeepSeek
+7. Run protocol smoke tests for DeepSeek Flash/Pro/GPT routing, DeepSeek
    resume continuity, and omitted versus empty all-provider history.
 8. Run a live App Server tool loop against the currently documented endpoint.
 9. Atomically activate only after all checks pass.
@@ -63,7 +63,7 @@ Do not infer routing from the picker. Confirm:
 - the loaded catalog contains only currently supported DeepSeek models;
 - the provider endpoint and wire API match current official documentation;
 - Desktop GPT rollout uses `model_provider = openai`;
-- Desktop Flash rollout uses `model = deepseek-v4-flash` and
+- Desktop DeepSeek rollout uses a supported model and
   `model_provider = deepseek`;
 - phone Remote has the same pairing after both new-thread creation and resume
   when remote access is in scope;

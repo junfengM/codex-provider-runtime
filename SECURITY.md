@@ -11,7 +11,7 @@ compiled Codex binaries, or local model catalogs.
 - Run `make check` before every push. The check rejects common credential
   patterns and known local-state filenames.
 
-The native patch changes only new-thread provider normalization. DeepSeek V4
-Flash uses Codex's normal HTTPS Responses client to connect directly to
+The native patch changes only new/resumed-thread provider normalization.
+DeepSeek V4 Flash and Pro use Codex's normal HTTPS Responses client to connect directly to
 `https://api.deepseek.com`; this project does not proxy prompts, responses,
 tools, or credentials. The API key remains command-backed from macOS Keychain.
