@@ -18,10 +18,12 @@ anchors as fixed. When better verified support appears, update runtime code,
 tests, compatibility docs, and this skill together; do not let an older skill
 rule block a safer native mechanism.
 
-Current verified baseline (2026-08-13): `deepseek-v4-flash` and
+Current verified baseline (2026-09-09): `deepseek-v4-flash` and
 `deepseek-v4-pro` are integrated using DeepSeek's native Responses API
-directly. Both have passed provider-explicit structured-tool checks. This is a
-dated baseline, not a permanent prohibition.
+directly. The runtime is rebuilt for Codex Desktop `26.901.51231` / bundled
+Codex CLI `0.153.4`; Flash passed an app-server structured-tool smoke after
+the Desktop restart, and the local routing contract keeps GPT on OpenAI. This
+is a dated baseline, not a permanent prohibition.
 
 ## Diagnose
 

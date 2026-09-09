@@ -12,6 +12,9 @@
   `codex-code-mode-host` when the upstream Rusty V8 archive is unavailable.
 - [x] Prefetch exact upstream lock-file dependencies before offline workspace
   normalization while continuing to reject external dependency lock drift.
+- [x] Rebuild and activate the native DeepSeek runtime for Desktop
+  `26.901.51231` / Codex `0.153.4`, including the new request-processor module
+  layout and a live app-server Flash tool smoke.
 
 ## Completed validation
 

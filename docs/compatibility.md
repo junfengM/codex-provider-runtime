@@ -24,6 +24,24 @@ or a new phone Remote thread.
 | Same-thread provider switching | Out of scope | A DeepSeek thread remains DeepSeek across resume and later turns; deliberate OpenAI ↔ DeepSeek migration is not implemented. |
 | V4 Pro | Supported | Official Pro-0813 exposes Responses and tools; the current Codex client completed a provider-explicit structured tool loop on 2026-08-13. |
 
+## Current client/runtime validation
+
+On 2026-09-09, the native runtime was rebuilt and activated for Codex Desktop
+`26.901.51231` with bundled Codex CLI `0.153.4` (`rust-v0.153.4`). The source
+patch manager now accepts both the older request-processor module layout and
+the `0.153.4` layout that inserts `mod projects;`, while refusing ambiguous or
+missing anchors.
+
+Validation completed after the Desktop restart:
+
+- `codex-provider verify` passed the ChatGPT/DeepSeek routing contract;
+- the desktop app-server process loaded
+  `/Users/mjf/.codex/provider-runtime/current/codex`;
+- `codex-provider appserver-smoke deepseek-v4-flash` completed a structured
+  `commandExecution` and matched the hidden SHA-256 challenge;
+- the routing smoke kept GPT on `openai` and both supported DeepSeek models on
+  `deepseek`.
+
 ## Validation evidence
 
 `codex-provider test-deepseek` proves the local CLI route and a real shell tool

@@ -107,6 +107,21 @@ def replace_once(text: str, old: str, new: str, *, description: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_one_of(
+    text: str,
+    replacements: Sequence[tuple[str, str]],
+    *,
+    description: str,
+) -> str:
+    matches = [(old, new) for old, new in replacements if text.count(old) == 1]
+    if len(matches) != 1:
+        raise RouterError(
+            f"Patch anchors for {description} matched {len(matches)} candidates; refusing to guess"
+        )
+    old, new = matches[0]
+    return text.replace(old, new, 1)
+
+
 def patch_source(source_root: Path, patch_asset: Path) -> str:
     app_server = source_root / "codex-rs" / "app-server" / "src"
     parent = app_server / "request_processors.rs"
@@ -154,14 +169,18 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
         raise RouterError("Source contains a partial provider patch; refusing mixed state")
 
     if fresh_source:
-        parent_anchor = "mod process_exec_processor;\nmod remote_control_processor;"
-        parent_replacement = (
-            "mod process_exec_processor;\nmod provider_route;\nmod remote_control_processor;"
-        )
-        parent_text = replace_once(
+        parent_text = replace_one_of(
             parent_text,
-            parent_anchor,
-            parent_replacement,
+            (
+                (
+                    "mod process_exec_processor;\nmod remote_control_processor;",
+                    "mod process_exec_processor;\nmod provider_route;\nmod remote_control_processor;",
+                ),
+                (
+                    "mod process_exec_processor;\nmod projects;",
+                    "mod process_exec_processor;\nmod provider_route;\nmod projects;",
+                ),
+            ),
             description="request processor module declaration",
         )
 
