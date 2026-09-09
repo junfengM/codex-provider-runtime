@@ -14,6 +14,11 @@ PARENT = """mod process_exec_processor;
 mod remote_control_processor;
 """
 
+PARENT_WITH_PROJECTS = """mod process_exec_processor;
+mod projects;
+mod remote_control_processor;
+"""
+
 THREAD = """use super::*;
 
 fn example(params: ThreadStartParams) {
@@ -90,6 +95,17 @@ class PatchSourceTests(unittest.TestCase):
         self.assertNotIn(
             "Some(vec![self.config.model_provider_id.clone()])",
             thread,
+        )
+
+    def test_applies_to_new_request_processor_module_layout(self) -> None:
+        source = self.root / "source"
+        parent = source / "codex-rs/app-server/src/request_processors.rs"
+        parent.write_text(PARENT_WITH_PROJECTS, encoding="utf-8")
+
+        self.assertEqual(router_manager.patch_source(source, self.patch_asset), "patched")
+        self.assertIn(
+            "mod process_exec_processor;\nmod provider_route;\nmod projects;",
+            parent.read_text(encoding="utf-8"),
         )
 
     def test_upgrades_the_legacy_new_thread_only_patch(self) -> None:
