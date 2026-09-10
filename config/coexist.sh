@@ -246,7 +246,7 @@ EOF
 deepseek_catalog_matches_current_contract() {
   local catalog="$1"
   jq -e '
-    ([.models[] | select(.slug == "deepseek-v4-flash")][0]) as $flash
+    ([.models[] | select(.slug == "deepseek-flash")][0]) as $flash
     | ([.models[] | select(.slug == "deepseek-v4-pro")][0]) as $pro
     | ($flash != null)
       and ($pro != null)
@@ -260,7 +260,7 @@ deepseek_catalog_matches_current_contract() {
       and ($flash.use_responses_lite == false)
       and ($flash.shell_type == "shell_command")
       and ($flash.supports_search_tool == true)
-      and ($flash.auto_review_model_override == "deepseek-v4-flash")
+      and ($flash.auto_review_model_override == "deepseek-flash")
       and ([$flash.supported_reasoning_levels[].effort] == ["low", "high", "max"])
       and ($pro.context_window == 1048576)
       and ($pro.max_context_window == 1048576)
@@ -272,7 +272,7 @@ deepseek_catalog_matches_current_contract() {
       and ($pro.use_responses_lite == false)
       and ($pro.shell_type == "shell_command")
       and ($pro.supports_search_tool == true)
-      and ($pro.auto_review_model_override == "deepseek-v4-flash")
+      and ($pro.auto_review_model_override == "deepseek-flash")
       and ([$pro.supported_reasoning_levels[].effort] == ["low", "high", "max"])
   ' "$catalog" >/dev/null
 }
@@ -290,9 +290,9 @@ derive_deepseek_catalog() {
         models: (
           [
             {
-              slug: "deepseek-v4-flash",
-              display_name: "DeepSeek-V4-Flash",
-              description: "Fast frontier agentic coding model.",
+              slug: "deepseek-flash",
+              display_name: "DeepSeek-V4.1-Flash",
+              description: "Newest fast frontier agentic coding model (V4.1 Flash).",
               priority: 1
             },
             {
@@ -317,7 +317,7 @@ derive_deepseek_catalog() {
             | .multi_agent_version = "v2"
             | .use_responses_lite = false
             | .include_skills_usage_instructions = false
-            | .auto_review_model_override = "deepseek-v4-flash"
+            | .auto_review_model_override = "deepseek-flash"
             | .context_window = 1048576
             | .max_context_window = 1048576
             | .effective_context_window_percent = 95
@@ -363,7 +363,7 @@ derive_deepseek_catalog() {
 
   jq -e '
     (.models | length > 0)
-    and any(.models[]; .slug == "deepseek-v4-flash")
+    and any(.models[]; .slug == "deepseek-flash")
     and any(.models[]; .slug == "deepseek-v4-pro")
   ' "$merged" >/dev/null || die "无法生成完整的 DeepSeek V4 模型目录"
   deepseek_catalog_matches_current_contract "$merged" \
@@ -551,10 +551,10 @@ history() {
 
 test_deepseek() {
   [ -n "$CODEX_BIN" ] || die "未找到 codex CLI"
-  local model="${1:-deepseek-v4-flash}" output
+  local model="${1:-deepseek-flash}" output
   case "$model" in
-    deepseek-v4-flash|deepseek-v4-pro) ;;
-    *) die "测试模型只支持 deepseek-v4-flash 或 deepseek-v4-pro" ;;
+    deepseek-flash|deepseek-v4-flash|deepseek-v4-pro) ;;
+    *) die "测试模型只支持 deepseek-flash、deepseek-v4-flash（旧名）或 deepseek-v4-pro" ;;
   esac
   if ! output="$(
     "$CODEX_BIN" exec \

@@ -8,7 +8,7 @@
 
 ```text
 Automatic approval review failed:
-The supported API model names are deepseek-v4-pro or deepseek-v4-flash, but you passed codex-auto-review.
+The supported API model names are deepseek-flash or deepseek-v4-pro, but you passed codex-auto-review.
 ```
 
 ## 根因
@@ -30,7 +30,7 @@ The supported API model names are deepseek-v4-pro or deepseek-v4-flash, but you 
 
 ## 当前实现
 
-DeepSeek 模型目录将 `auto_review_model_override` 设置为 `deepseek-v4-flash`，Codex 会直接
+DeepSeek 模型目录将 `auto_review_model_override` 设置为 `deepseek-flash`（V4.1 Flash），Codex 会直接
 用 Flash 创建 reviewer，并优先使用 Flash 支持的 `low` effort。Codex 侧仍保留 reviewer
 会话身份、审批协议和结果处理，不需要本机模型名代理。
 

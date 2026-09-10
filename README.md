@@ -1,10 +1,12 @@
 # Codex Provider Runtime
 
 Codex Provider Runtime 是一个 macOS 本地运行时扩展。它让 Codex Desktop 和手机 Remote
-在新建或恢复 `deepseek-v4-flash` / `deepseek-v4-pro` 对话时保持使用 DeepSeek
+在新建或恢复 `deepseek-flash` / `deepseek-v4-pro` 对话时保持使用 DeepSeek
 provider，同时保留 ChatGPT 登录、GPT 模型和 OpenAI provider。
 
-当前版本接入 DeepSeek V4 Flash-0731 与 V4 Pro-0813。它不修改或重新签名
+当前版本接入 DeepSeek V4.1 Flash（`deepseek-flash`，2026-09-10 发布）与 V4 Pro-0813。
+旧的 `deepseek-v4-flash` 已被 DeepSeek 退役，但官方仍接受该名称并转发到 V4.1 Flash，
+因此历史会话可以继续恢复与发送。它不修改或重新签名
 `ChatGPT.app`，不重写历史会话 provider，也不支持在同一旧对话中跨 provider 切换。
 两款模型均通过 DeepSeek 官方原生 Responses API 直连。
 
@@ -35,7 +37,8 @@ app-server 路径，因此仅在 Desktop stdin 前增加 JavaScript shim 无法�
 本项目在 app-server 的公共协议层维护两项互不干扰的兼容修复。新线程和恢复线程都执行窄路由：
 
 ```text
-deepseek-v4-flash/pro + provider 缺失/openai → deepseek
+deepseek-flash / deepseek-v4-flash（旧名）/ deepseek-v4-pro
+                        + provider 缺失/openai → deepseek
 其他模型（包括尚未接入的 DeepSeek）          → 不改路由
 GPT 模型                                     → 保持 OpenAI
 显式第三方 provider                          → 保持调用方选择
@@ -56,7 +59,7 @@ DeepSeek 线程恢复/后续 turn                   → 继承 deepseek provider
 ```text
 Codex Responses request → https://api.deepseek.com/responses
 
-codex-auto-review → deepseek-v4-flash（low effort）
+codex-auto-review → deepseek-flash（low effort）
 ```
 
 ## 快速开始

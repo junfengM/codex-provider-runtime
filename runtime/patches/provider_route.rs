@@ -1,5 +1,7 @@
 // This file is injected into codex-app-server by router_manager.py.
-// Integrated model contract: DeepSeek V4 Flash-0731 and V4 Pro-0813.
+// Integrated model contract: DeepSeek V4.1 Flash (`deepseek-flash`, released
+// 2026-09-10) and V4 Pro-0813, plus the retired `deepseek-v4-flash` alias that
+// DeepSeek still serves from V4.1 Flash so existing threads keep working.
 // Keep the routing policy deliberately narrow: only supported V4 threads whose
 // caller omitted a provider (or incorrectly supplied the ChatGPT default
 // provider) are redirected. Explicit third-party providers remain authoritative.
@@ -25,8 +27,10 @@ fn model_provider_for_supported_model(
     model: Option<&str>,
     model_provider: Option<String>,
 ) -> Option<String> {
-    let is_deepseek_model =
-        matches!(model, Some("deepseek-v4-flash" | "deepseek-v4-pro"));
+    let is_deepseek_model = matches!(
+        model,
+        Some("deepseek-flash" | "deepseek-v4-flash" | "deepseek-v4-pro")
+    );
     let has_default_provider = matches!(model_provider.as_deref(), None | Some("openai"));
 
     if is_deepseek_model && has_default_provider {
@@ -55,7 +59,7 @@ mod tests {
     #[test]
     fn routes_deepseek_when_provider_is_missing() {
         assert_eq!(
-            model_provider_for_new_thread(Some("deepseek-v4-flash"), None),
+            model_provider_for_new_thread(Some("deepseek-flash"), None),
             Some("deepseek".to_string())
         );
     }
@@ -64,7 +68,7 @@ mod tests {
     fn corrects_chatgpt_default_for_flash() {
         assert_eq!(
             model_provider_for_new_thread(
-                Some("deepseek-v4-flash"),
+                Some("deepseek-flash"),
                 Some("openai".to_string())
             ),
             Some("deepseek".to_string())
@@ -74,7 +78,22 @@ mod tests {
     #[test]
     fn corrects_chatgpt_default_when_resuming_flash() {
         assert_eq!(
-            model_provider_for_resume(Some("deepseek-v4-flash"), None),
+            model_provider_for_resume(Some("deepseek-flash"), None),
+            Some("deepseek".to_string())
+        );
+        assert_eq!(
+            model_provider_for_resume(
+                Some("deepseek-flash"),
+                Some("openai".to_string())
+            ),
+            Some("deepseek".to_string())
+        );
+    }
+
+    #[test]
+    fn routes_the_retired_flash_alias_from_existing_threads() {
+        assert_eq!(
+            model_provider_for_new_thread(Some("deepseek-v4-flash"), None),
             Some("deepseek".to_string())
         );
         assert_eq!(
@@ -116,7 +135,7 @@ mod tests {
     fn preserves_an_explicit_non_default_provider() {
         assert_eq!(
             model_provider_for_new_thread(
-                Some("deepseek-v4-flash"),
+                Some("deepseek-flash"),
                 Some("private-gateway".to_string())
             ),
             Some("private-gateway".to_string())

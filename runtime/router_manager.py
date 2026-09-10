@@ -37,7 +37,7 @@ RESUME_CALL_MARKER = "model_provider_for_resume("
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
 RETIRED_GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
-PATCH_NAME = "deepseek-v4-flash-pro-route-resume-and-all-provider-history-v5"
+PATCH_NAME = "deepseek-flash-pro-route-resume-and-all-provider-history-v6"
 LEGACY_SUPPORT_NAMES = {
     f"{RETIRED_GATEWAY_LABEL}.plist",
     "com.dudu.codex-deepseek-router-environment.plist",
@@ -508,9 +508,10 @@ def protocol_smoke(binary: Path) -> dict:
                 send_json_line(process, {"method": "initialized"})
                 providers = {}
                 for request_id, model, expected in (
-                    (2, "deepseek-v4-flash", "deepseek"),
-                    (3, "deepseek-v4-pro", "deepseek"),
-                    (4, "gpt-5.6-sol", "openai"),
+                    (2, "deepseek-flash", "deepseek"),
+                    (3, "deepseek-v4-flash", "deepseek"),
+                    (4, "deepseek-v4-pro", "deepseek"),
+                    (5, "gpt-5.6-sol", "openai"),
                 ):
                     send_json_line(
                         process,
@@ -766,7 +767,7 @@ def resumed_thread_provider_smoke(binary: Path) -> dict:
                     "method": "thread/start",
                     "id": 2,
                     "params": {
-                        "model": "deepseek-v4-flash",
+                        "model": "deepseek-flash",
                         "cwd": "/private/tmp",
                         "approvalPolicy": "never",
                         "sandbox": "read-only",
@@ -796,7 +797,7 @@ def resumed_thread_provider_smoke(binary: Path) -> dict:
                                 "text": "resume routing persistence probe",
                             }
                         ],
-                        "model": "deepseek-v4-flash",
+                        "model": "deepseek-flash",
                     },
                 },
             )
@@ -813,7 +814,7 @@ def resumed_thread_provider_smoke(binary: Path) -> dict:
                     "id": 2,
                     "params": {
                         "threadId": thread_id,
-                        "model": "deepseek-v4-flash",
+                        "model": "deepseek-flash",
                         "excludeTurns": True,
                     },
                 },
@@ -827,7 +828,7 @@ def resumed_thread_provider_smoke(binary: Path) -> dict:
                     f"response={provider!r}, thread={thread_provider!r}"
                 )
             return {
-                "model": "deepseek-v4-flash",
+                "model": "deepseek-flash",
                 "model_provider": provider,
                 "thread_model_provider": thread_provider,
                 "cold_resume": True,
@@ -837,12 +838,12 @@ def resumed_thread_provider_smoke(binary: Path) -> dict:
 
 
 def app_server_deepseek_tool_smoke(
-    binary: Path, cwd: Path, model: str = "deepseek-v4-flash"
+    binary: Path, cwd: Path, model: str = "deepseek-flash"
 ) -> dict:
     """Exercise the same public app-server path used by a new Remote thread."""
     if not cwd.is_dir():
         raise RouterError(f"app-server smoke cwd is not a directory: {cwd}")
-    if model not in {"deepseek-v4-flash", "deepseek-v4-pro"}:
+    if model not in {"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"}:
         raise RouterError(f"unsupported DeepSeek smoke model: {model}")
     with tempfile.TemporaryDirectory(prefix="codex-app-server-live-smoke-") as temporary:
         temporary_path = Path(temporary)
@@ -1724,8 +1725,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     live_smoke.add_argument("--cwd", type=Path, default=Path.cwd())
     live_smoke.add_argument(
         "--model",
-        choices=("deepseek-v4-flash", "deepseek-v4-pro"),
-        default="deepseek-v4-flash",
+        choices=("deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"),
+        default="deepseek-flash",
     )
     subparsers.add_parser("install-support")
     subparsers.add_parser("activate-support")

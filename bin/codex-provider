@@ -167,7 +167,7 @@ case "${1:-help}" in
         manager_run app-server-live-smoke \
             --binary "$install_root/current/codex" \
             --cwd "$PWD" \
-            --model "${2:-deepseek-v4-flash}"
+            --model "${2:-deepseek-flash}"
         ;;
     enable)
         manager_run enable

@@ -9,7 +9,7 @@ fail with an unsupported model error.
 The current model catalog sets:
 
 ```text
-auto_review_model_override = deepseek-v4-flash
+auto_review_model_override = deepseek-flash
 ```
 
 Codex therefore creates the DeepSeek reviewer with Flash and prefers `low`
@@ -24,7 +24,7 @@ manual approval instead.
 ## Validation
 
 Trigger one low-risk action that requires approval and confirm the reviewer
-rollout uses `deepseek-v4-flash`, completes normally, and has no unsupported
+rollout uses `deepseek-flash`, completes normally, and has no unsupported
 model or authentication error. Do not infer reviewer success from the main
 agent's normal responses.
 

@@ -279,7 +279,7 @@ class ReleaseReuseTests(unittest.TestCase):
     COMMIT = "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a"
     OTHER_COMMIT = "a30ec314bbd0e3721632234d07db7c99855db3b9"
     SMOKE = {
-        "new_thread_routing": {"deepseek-v4-flash": "deepseek"},
+        "new_thread_routing": {"deepseek-flash": "deepseek"},
         "resumed_thread_routing": {"model_provider": "deepseek"},
         "thread_list_visibility": {"omitted_null_empty_match": True},
     }

@@ -5,7 +5,8 @@
 Use the native router when Desktop and phone Remote must start or resume a
 supported third-party model through its provider while GPT remains on OpenAI.
 Keep the route table evidence-driven and model-exact. The 2026-08-13 verified
-policy routes `deepseek-v4-flash` and `deepseek-v4-pro` to `deepseek`.
+policy routes `deepseek-flash` (V4.1 Flash, 2026-09-10), its retired
+`deepseek-v4-flash` alias, and `deepseek-v4-pro` to `deepseek`.
 
 It normalizes provider identity at new-thread creation and Remote resume. It
 does not implement deliberate same-thread provider switching.

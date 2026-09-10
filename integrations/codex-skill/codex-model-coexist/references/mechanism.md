@@ -37,11 +37,12 @@ DeepSeek as a custom provider and route only validated model names at new-thread
 creation and Remote resume. On macOS, prefer command-backed Keychain authentication; elsewhere
 use an environment key. Never copy the secret into a catalog or repository.
 
-Current verified DeepSeek provider contract (2026-08-13):
+Current verified DeepSeek provider contract (2026-09-10):
 
 - base URL `https://api.deepseek.com`;
 - wire API `responses`;
-- `deepseek-v4-flash` and `deepseek-v4-pro` integrated;
+- `deepseek-flash` (V4.1 Flash) and `deepseek-v4-pro` integrated, plus the
+  retired `deepseek-v4-flash` alias served by V4.1 Flash;
 - native structured tools, no local protocol gateway.
 
 This contract must be rechecked after upstream announcements.

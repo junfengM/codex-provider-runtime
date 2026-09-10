@@ -58,9 +58,11 @@ only when same-thread switching is in scope.
 
 ## Current verified baseline
 
-Last verified: 2026-08-13.
+Last verified: 2026-09-10.
 
-- Integrate `deepseek-v4-flash` and `deepseek-v4-pro`.
+- Integrate `deepseek-flash` (DeepSeek-V4.1-Flash) and `deepseek-v4-pro`, and
+  keep the retired `deepseek-v4-flash` name routed because DeepSeek serves it
+  from V4.1 Flash.
 - Send both directly to `https://api.deepseek.com/responses` through the Codex
   native Responses client.
 - Route new and resumed Flash/Pro threads only; leave GPT, unknown DeepSeek

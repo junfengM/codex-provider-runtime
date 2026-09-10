@@ -41,7 +41,7 @@ class DeepSeekCatalogContractTests(unittest.TestCase):
             stale = dict(base_model)
             stale.update(
                 {
-                    "slug": "deepseek-v4-flash",
+                    "slug": "deepseek-flash",
                     "context_window": 1000000,
                     "auto_review_model_override": None,
                 }
@@ -67,14 +67,15 @@ class DeepSeekCatalogContractTests(unittest.TestCase):
 
             catalog = json.loads((codex_home / "models-coexist.json").read_text())
             models = {model["slug"]: model for model in catalog["models"]}
-            flash = models["deepseek-v4-flash"]
+            flash = models["deepseek-flash"]
             pro = models["deepseek-v4-pro"]
             self.assertEqual(flash["context_window"], 1048576)
             self.assertTrue(flash["support_verbosity"])
             self.assertIsNone(flash["tool_mode"])
             self.assertFalse(flash["use_responses_lite"])
             self.assertEqual(flash["shell_type"], "shell_command")
-            self.assertEqual(flash["auto_review_model_override"], "deepseek-v4-flash")
+            self.assertEqual(flash["display_name"], "DeepSeek-V4.1-Flash")
+            self.assertEqual(flash["auto_review_model_override"], "deepseek-flash")
             self.assertEqual(
                 [level["effort"] for level in flash["supported_reasoning_levels"]],
                 ["low", "high", "max"],
@@ -82,7 +83,7 @@ class DeepSeekCatalogContractTests(unittest.TestCase):
             self.assertEqual(pro["context_window"], 1048576)
             self.assertEqual(pro["max_context_window"], 1048576)
             self.assertEqual(pro["display_name"], "DeepSeek-V4-Pro")
-            self.assertEqual(pro["auto_review_model_override"], "deepseek-v4-flash")
+            self.assertEqual(pro["auto_review_model_override"], "deepseek-flash")
             self.assertEqual(
                 [level["effort"] for level in pro["supported_reasoning_levels"]],
                 ["low", "high", "max"],

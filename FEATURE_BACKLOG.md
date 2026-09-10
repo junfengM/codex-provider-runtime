@@ -21,6 +21,9 @@
 - [x] Reuse a certified custom binary instead of recompiling when the bundled
   client digest moves but the public source tag and patch asset are unchanged,
   with `--no-reuse` as the explicit source-build escape hatch.
+- [x] Replace the retired `deepseek-v4-flash` catalog entry with
+  `deepseek-flash` (DeepSeek-V4.1-Flash) while keeping the retired alias routed,
+  and refresh the runtime, docs, and operator skills to the 2026-09-10 contract.
 
 ## Completed validation
 

@@ -18,11 +18,13 @@ anchors as fixed. When better verified support appears, update runtime code,
 tests, compatibility docs, and this skill together; do not let an older skill
 rule block a safer native mechanism.
 
-Current verified baseline (2026-09-09): `deepseek-v4-flash` and
-`deepseek-v4-pro` are integrated using DeepSeek's native Responses API
-directly. The runtime is rebuilt for Codex Desktop `26.901.51231` / bundled
-Codex CLI `0.153.4`; Flash passed an app-server structured-tool smoke after
-the Desktop restart, and the local routing contract keeps GPT on OpenAI. This
+Current verified baseline (2026-09-10): `deepseek-flash` (DeepSeek-V4.1-Flash,
+released 2026-09-10) and `deepseek-v4-pro` are integrated using DeepSeek's
+native Responses API directly. The retired `deepseek-v4-flash` name stays
+routed because DeepSeek serves it from V4.1 Flash, so existing threads keep
+working. DeepSeek routes every `deepseek-v4-pro` request to V4.1 Flash from
+04:00 UTC on 2026-09-14 until V4.1 Pro ships. The runtime keeps GPT on OpenAI
+and passes an app-server structured-tool smoke for the current Flash slug. This
 is a dated baseline, not a permanent prohibition.
 
 ## Diagnose

@@ -1,11 +1,12 @@
 # DeepSeek compatibility matrix
 
-This matrix describes DeepSeek V4 Flash-0731 and V4 Pro-0813 in Codex Desktop
+This matrix describes DeepSeek V4.1 Flash (`deepseek-flash`, released
+2026-09-10; retired alias `deepseek-v4-flash`) and V4 Pro-0813 in Codex Desktop
 or a new phone Remote thread.
 
 | Capability | Status | Adapter behavior |
 |---|---|---|
-| New-thread provider routing | Supported | The exact supported slugs `deepseek-v4-flash` and `deepseek-v4-pro` become provider `deepseek` in shared `thread/start`. |
+| New-thread provider routing | Supported | The exact supported slugs `deepseek-flash`, its retired `deepseek-v4-flash` alias, and `deepseek-v4-pro` become provider `deepseek` in shared `thread/start`. |
 | Remote resume provider continuity | Supported | `thread/resume` rebinds a missing/default provider to `deepseek` for Flash or Pro without rewriting stored thread metadata. |
 | Cross-provider history visibility | Supported | Omitted/null/empty `modelProviders` lists all interactive providers; explicit filters remain exact. |
 | Text and streaming output | Supported | Direct DeepSeek native Responses SSE. |
@@ -19,12 +20,18 @@ or a new phone Remote thread.
 | Auto-review | Supported with trust change | `auto_review_model_override` routes the reviewer to Flash with low effort. |
 | Long-context compaction | Supported locally | Non-OpenAI providers use Codex local compaction, not `/responses/compact`. |
 | Search tool | Official catalog enabled | Uses DeepSeek's current `web_search_tool_type = text` contract. |
-| Image/audio input | Not supported | Both DeepSeek catalog entries are text-only. |
+| Image/audio input | Not enabled | V4.1 Flash supports vision upstream (DeepSeek docs, 2026-09-10); the catalog still declares `input_modalities = ["text"]` until Codex image handling is verified end-to-end. |
 | More than 128 functions | Upstream limit | Defer or disable unused MCP/plugin tools. |
 | Same-thread provider switching | Out of scope | A DeepSeek thread remains DeepSeek across resume and later turns; deliberate OpenAI ↔ DeepSeek migration is not implemented. |
-| V4 Pro | Supported | Official Pro-0813 exposes Responses and tools; the current Codex client completed a provider-explicit structured tool loop on 2026-08-13. |
+| V4 Pro | Supported until 2026-09-14 | Official Pro-0813 exposes Responses and tools; DeepSeek routes every `deepseek-v4-pro` request to V4.1 Flash from 04:00 UTC on 2026-09-14 until V4.1 Pro ships. |
 
 ## Current client/runtime validation
+
+On 2026-09-10 DeepSeek released V4.1 Flash (`deepseek-flash`) and retired
+V4-Flash; `deepseek-v4-flash` is still accepted and served by V4.1 Flash. The
+runtime routes the new slug, the retired alias, and `deepseek-v4-pro`, and the
+catalog publishes `deepseek-flash` as `DeepSeek-V4.1-Flash` with
+`auto_review_model_override = deepseek-flash`.
 
 On 2026-09-09, the native runtime was rebuilt and activated for Codex Desktop
 `26.901.51231` with bundled Codex CLI `0.153.4` (`rust-v0.153.4`). The source

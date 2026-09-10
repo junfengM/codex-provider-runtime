@@ -13,7 +13,7 @@ stable CODEX_CLI_PATH launcher
 versioned patched Codex app-server
           │ model prefix normalization
           ├── GPT ───────────────────────────► OpenAI provider
-          └── deepseek-v4-flash/pro ─────────► DeepSeek native Responses
+          └── deepseek-flash/v4-pro ─────────► DeepSeek native Responses
 
 thread/list without modelProviders ──────────► all interactive providers
 ```
@@ -39,7 +39,8 @@ moved to recoverable backups during activation.
 
 The Rust patch keeps model routing deliberately provider-specific and model-exact.
 It changes a missing or default OpenAI provider to `deepseek` only when the
-model is exactly `deepseek-v4-flash` or `deepseek-v4-pro`, both when a thread
+model is exactly `deepseek-flash`, the retired `deepseek-v4-flash` alias, or
+`deepseek-v4-pro`, both when a thread
 starts and when it is resumed. After resume, subsequent turns inherit the
 active thread provider; the patch does not add an unsupported provider-switch
 field to `turn/start`. Explicit non-default providers, unintegrated DeepSeek
@@ -89,12 +90,12 @@ asset from racing the final `current` symlink back to an older release.
 ## Native protocol
 
 Codex custom providers emit the Responses wire protocol. DeepSeek
-V4 Flash-0731 and Pro-0813 support that protocol natively, so requests go
+V4.1 Flash and Pro-0813 support that protocol natively, so requests go
 directly from Codex to `https://api.deepseek.com`.
 There is no local protocol translation or prompt/response proxy.
 
 The model catalog sets `auto_review_model_override` to
-`deepseek-v4-flash`. This lets Codex choose Flash directly and use its supported
+`deepseek-flash`. This lets Codex choose Flash directly and use its supported
 `low` reasoning effort for the reviewer.
 
 The non-OpenAI provider automatically uses Codex local compaction, so it never
