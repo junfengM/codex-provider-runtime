@@ -104,7 +104,9 @@ cd codex-provider-runtime
 ```
 
 `skill-install` 同步 `codex-model-coexist` 与 `codex-provider-runtime`，并把旧版本移动到安装
-目录下的可恢复备份，确保新发现进入后续诊断和升级流程。
+目录下的可恢复备份，确保新发现进入后续诊断和升级流程。如果本机存在跨 agent 共享技能目录
+（默认 `~/ai/shared/skills/`，可用 `CODEX_SHARED_SKILLS_ROOT` 覆盖）且其中已有同名技能，
+它会一并刷新到同一版本，避免两份 skill 漂移。
 
 ## 常用命令
 

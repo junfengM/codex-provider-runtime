@@ -95,6 +95,12 @@ page and setup script with `docs/compatibility.md`, then run
 `./bin/codex-provider configure` and the two live smoke tests. Catalog
 validation fails closed if the known V4 Flash/Pro compatibility fields drift.
 
+`./bin/codex-provider skill-install` refreshes the two operator skills under
+`$CODEX_HOME/skills` and, when a cross-agent shared skills directory already
+contains them (default `~/ai/shared/skills`, override with
+`CODEX_SHARED_SKILLS_ROOT`), refreshes that copy from the same source so the two
+never describe different routing mechanisms.
+
 ## Emergency fallback
 
 ```bash

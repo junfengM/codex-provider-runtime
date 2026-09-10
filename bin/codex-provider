@@ -211,6 +211,7 @@ case "${1:-help}" in
         ;;
     skill-install)
         skill_root="${CODEX_HOME:-$HOME/.codex}/skills"
+        shared_root="${CODEX_SHARED_SKILLS_ROOT:-$HOME/ai/shared/skills}"
         backup_root="$install_root/backups/skills"
         timestamp="$(date +%Y%m%d-%H%M%S)"
         mkdir -p "$skill_root" "$backup_root"
@@ -224,6 +225,16 @@ case "${1:-help}" in
             fi
             /usr/bin/ditto "$source_skill" "$target_skill"
             printf 'Installed optional skill: %s\n' "$target_skill"
+
+            # Keep an existing cross-agent shared copy on the same source of truth.
+            shared_skill="$shared_root/$skill_name"
+            if [ -e "$shared_skill" ] || [ -L "$shared_skill" ]; then
+                shared_backup="$backup_root/shared-$skill_name.$timestamp"
+                mv "$shared_skill" "$shared_backup"
+                /usr/bin/ditto "$source_skill" "$shared_skill"
+                printf 'Synced shared skill: %s\n' "$shared_skill"
+                printf 'Previous shared copy kept at: %s\n' "$shared_backup"
+            fi
         done
         ;;
     *)

@@ -33,6 +33,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("codex-model-coexist codex-provider-runtime", skill_case)
         self.assertIn("backups/skills", skill_case)
         self.assertIn('mv "$target_skill" "$backup_skill"', skill_case)
+        self.assertIn("CODEX_SHARED_SKILLS_ROOT", skill_case)
+        self.assertIn('mv "$shared_skill" "$shared_backup"', skill_case)
 
     def run_cli(self, *args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
