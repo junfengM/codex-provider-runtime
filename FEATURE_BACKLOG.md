@@ -15,6 +15,9 @@
 - [x] Rebuild and activate the native DeepSeek runtime for Desktop
   `26.901.51231` / Codex `0.153.4`, including the new request-processor module
   layout and a live app-server Flash tool smoke.
+- [x] Auto-reconcile the runtime against Desktop `26.903.71938` (new bundled
+  Codex `0.153.4` binary sha) and confirm DeepSeek routing with a live request
+  and an app-server tool smoke.
 
 ## Completed validation
 
