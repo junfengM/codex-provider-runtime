@@ -23,7 +23,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Sequence, Union
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 
 REPO_URL = "https://github.com/openai/codex.git"
@@ -37,6 +37,7 @@ RESUME_CALL_MARKER = "model_provider_for_resume("
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
 RETIRED_GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
+PATCH_NAME = "deepseek-v4-flash-pro-route-resume-and-all-provider-history-v5"
 LEGACY_SUPPORT_NAMES = {
     f"{RETIRED_GATEWAY_LABEL}.plist",
     "com.dudu.codex-deepseek-router-environment.plist",
@@ -1085,17 +1086,224 @@ def bundled_code_mode_host(official_codex: Path) -> Path:
     return host
 
 
+def certified_release_candidates(
+    install_root: Path,
+) -> List[Tuple[Path, Dict[str, object]]]:
+    releases = install_root / "releases"
+    if not releases.is_dir():
+        return []
+    candidates: List[Tuple[Path, Dict[str, object]]] = []
+    for release in sorted(releases.iterdir()):
+        if not release.is_dir() or release.name.startswith(".staging-"):
+            continue
+        manifest_path = release / "manifest.json"
+        binary = release / "codex"
+        if not manifest_path.is_file() or not binary.is_file():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        candidates.append((release, manifest))
+    return candidates
+
+
+def find_certified_release(
+    install_root: Path,
+    version: str,
+    patch_digest: str,
+    *,
+    official_digest: Optional[str] = None,
+) -> Optional[Path]:
+    """Return the newest cached release build certified for this version and patch.
+
+    The custom binary is built from the public source tag plus the patch asset,
+    so an identical source commit and patch digest describe an identical binary
+    even when the bundled client digest moves. Candidates must still prove their
+    recorded checksum and reported version, and an ambiguous source commit makes
+    the caller fall back to a source build instead of guessing.
+    """
+    matches: Dict[str, Tuple[str, Path]] = {}
+    for release, manifest in certified_release_candidates(install_root):
+        if manifest.get("codex_version") != version:
+            continue
+        if manifest.get("patch_sha256") != patch_digest:
+            continue
+        if (
+            official_digest is not None
+            and manifest.get("official_sha256") != official_digest
+        ):
+            continue
+        commit = manifest.get("source_commit")
+        if not isinstance(commit, str) or not commit:
+            continue
+        binary = release / "codex"
+        if sha256(binary) != manifest.get("custom_sha256"):
+            continue
+        try:
+            if codex_version(binary) != version:
+                continue
+        except (RouterError, subprocess.CalledProcessError, OSError):
+            continue
+        built_at = str(manifest.get("built_at") or "")
+        previous = matches.get(commit)
+        if previous is None or built_at > previous[0]:
+            matches[commit] = (built_at, release)
+    if len(matches) != 1:
+        return None
+    return next(iter(matches.values()))[1]
+
+
+def stage_release(
+    install_root: Path,
+    release_name: str,
+    custom_binary: Path,
+    host: Path,
+    manifest_fields: Dict[str, object],
+) -> Path:
+    staging = install_root / "releases" / f".staging-{release_name}-{os.getpid()}"
+    staging.mkdir(parents=True, exist_ok=False)
+    try:
+        shutil.copy2(custom_binary, staging / "codex")
+        shutil.copy2(host, staging / "codex-code-mode-host")
+        for binary in (staging / "codex", staging / "codex-code-mode-host"):
+            binary.chmod(0o755)
+        manifest: Dict[str, object] = {
+            "schema": 1,
+            "custom_sha256": sha256(staging / "codex"),
+            "code_mode_host_sha256": sha256(staging / "codex-code-mode-host"),
+            "code_mode_host_source": "bundled-with-desktop",
+            "built_at": utc_now(),
+        }
+        manifest.update(manifest_fields)
+        (staging / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        release = install_root / "releases" / release_name
+        if release.exists():
+            raise RouterError(f"Refusing to overwrite an existing release: {release}")
+        os.replace(staging, release)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return release
+
+
+def reuse_release(
+    install_root: Path,
+    official_codex: Path,
+    patch_asset: Path,
+    cached_release: Path,
+    version: str,
+    official_digest: str,
+    patch_digest: str,
+) -> Optional[Path]:
+    """Re-certify and activate a cached binary when only the client digest moved."""
+    manifest_path = cached_release / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    commit = manifest.get("source_commit")
+    if not isinstance(commit, str) or not commit:
+        return None
+    binary = cached_release / "codex"
+    try:
+        host = bundled_code_mode_host(official_codex)
+        run([host, "--help"], capture=True)
+        smoke_result = protocol_smoke_suite(binary)
+    except (RouterError, subprocess.CalledProcessError, OSError) as error:
+        print(
+            f"Cached release {cached_release.name} failed reuse checks; "
+            f"rebuilding from source: {error}",
+            file=sys.stderr,
+        )
+        return None
+    print(
+        "Reusing certified custom binary:",
+        json.dumps(
+            {
+                "cached_release": cached_release.name,
+                "source_commit": commit,
+                "patch": os.fspath(patch_asset),
+                "patch_sha256": patch_digest,
+                "protocol_smoke": smoke_result,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+    )
+    release_name = (
+        f"{version}-{commit[:12]}-{official_digest[:12]}-{patch_digest[:12]}"
+    )
+    return stage_release(
+        install_root,
+        release_name,
+        binary,
+        host,
+        {
+            "codex_version": version,
+            "source_tag": manifest.get("source_tag") or f"rust-v{version}",
+            "source_commit": commit,
+            "official_binary": os.fspath(official_codex),
+            "official_sha256": official_digest,
+            "patch_sha256": patch_digest,
+            "patch": PATCH_NAME,
+            "workspace_lock_versions_normalized": manifest.get(
+                "workspace_lock_versions_normalized"
+            ),
+            "protocol_smoke": smoke_result,
+            "reused_from": cached_release.name,
+            "tests": [
+                "reused certified custom binary for an unchanged source commit and patch",
+                "binary version smoke",
+                "bundled code-mode-host help and checksum",
+                "app-server new/resumed routing and all-provider thread-list protocol smoke",
+            ],
+        },
+    )
+
+
 def build_release(
     install_root: Path,
     official_codex: Path,
     patch_asset: Path,
     *,
     non_interactive: bool,
+    allow_reuse: bool = True,
 ) -> Path:
     del non_interactive  # Reserved for future notification policy; builds are always deterministic.
     version = codex_version(official_codex)
     official_digest = sha256(official_codex)
     patch_digest = sha256(patch_asset)
+
+    existing = find_certified_release(
+        install_root, version, patch_digest, official_digest=official_digest
+    )
+    if existing is not None:
+        manifest = json.loads(
+            (existing / "manifest.json").read_text(encoding="utf-8")
+        )
+        verify_existing_release(existing, manifest, version)
+        activate_release(install_root, existing.name)
+        return existing
+
+    if allow_reuse:
+        reusable = find_certified_release(install_root, version, patch_digest)
+        if reusable is not None:
+            reused = reuse_release(
+                install_root,
+                official_codex,
+                patch_asset,
+                reusable,
+                version,
+                official_digest,
+                patch_digest,
+            )
+            if reused is not None:
+                activate_release(install_root, reused.name)
+                return reused
+
     source, tag, commit = ensure_source_checkout(install_root, version)
     release_name = (
         f"{version}-{commit[:12]}-{official_digest[:12]}-{patch_digest[:12]}"
@@ -1157,39 +1365,29 @@ def build_release(
     print("Protocol smoke:", json.dumps(smoke_result, ensure_ascii=False, sort_keys=True))
     sign_if_available(built_codex)
 
-    staging = install_root / "releases" / f".staging-{release_name}-{os.getpid()}"
-    staging.mkdir(parents=True, exist_ok=False)
-    shutil.copy2(built_codex, staging / "codex")
-    shutil.copy2(built_host, staging / "codex-code-mode-host")
-    for binary in (staging / "codex", staging / "codex-code-mode-host"):
-        binary.chmod(0o755)
-    manifest = {
-        "schema": 1,
-        "codex_version": version,
-        "source_tag": tag,
-        "source_commit": commit,
-        "official_binary": os.fspath(official_codex),
-        "official_sha256": official_digest,
-        "patch_sha256": patch_digest,
-        "custom_sha256": sha256(staging / "codex"),
-        "code_mode_host_sha256": sha256(staging / "codex-code-mode-host"),
-        "code_mode_host_source": "bundled-with-desktop",
-        "patch": "deepseek-v4-flash-pro-route-resume-and-all-provider-history-v5",
-        "built_at": utc_now(),
-        "workspace_lock_versions_normalized": lock_versions_normalized,
-        "protocol_smoke": smoke_result,
-        "tests": [
-            "provider_route unit tests",
-            "binary version smoke",
-            "bundled code-mode-host help and checksum",
-            "app-server new/resumed routing and all-provider thread-list protocol smoke",
-        ],
-    }
-    (staging / "manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    release = stage_release(
+        install_root,
+        release_name,
+        built_codex,
+        built_host,
+        {
+            "codex_version": version,
+            "source_tag": tag,
+            "source_commit": commit,
+            "official_binary": os.fspath(official_codex),
+            "official_sha256": official_digest,
+            "patch_sha256": patch_digest,
+            "patch": PATCH_NAME,
+            "workspace_lock_versions_normalized": lock_versions_normalized,
+            "protocol_smoke": smoke_result,
+            "tests": [
+                "provider_route unit tests",
+                "binary version smoke",
+                "bundled code-mode-host help and checksum",
+                "app-server new/resumed routing and all-provider thread-list protocol smoke",
+            ],
+        },
     )
-    release.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(staging, release)
     activate_release(install_root, release_name)
     return release
 
@@ -1512,6 +1710,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     subparsers.add_parser("status")
     update = subparsers.add_parser("update")
     update.add_argument("--non-interactive", action="store_true")
+    update.add_argument(
+        "--no-reuse",
+        action="store_true",
+        help="always rebuild from source instead of reusing a certified binary",
+    )
     verify = subparsers.add_parser("verify-patch")
     verify.add_argument("--source", type=Path, required=True)
     smoke = subparsers.add_parser("smoke")
@@ -1588,6 +1791,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     args.official_codex,
                     patch_asset,
                     non_interactive=args.non_interactive,
+                    allow_reuse=not args.no_reuse,
                 )
                 print(f"Activated router release: {release}")
                 return 0

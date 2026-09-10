@@ -123,6 +123,9 @@ codex-provider uninstall
 
 - `disable`：保留安装与凭据，下一次启动回退官方后端；
 - `enable`：解除禁用标记，但仍要求版本完全匹配；
+- `update`：Desktop 更新后重新认证并激活；当公开源码 tag 与补丁资产未变时，直接复用已
+  验证的自编译二进制（仍会重跑 code-mode-host 检查和协议 smoke），需要强制源码重建时用
+  `update --no-reuse`；
 - `uninstall`：卸载 LaunchAgent 和环境入口，保留 releases、配置与 Keychain；
 - `test-deepseek [model]`：指定 Flash 或 Pro 的本地 CLI 真实结构化工具调用闭环；
 - `keychain-status`：只检查 DeepSeek Keychain 项是否存在，不读取或打印 API Key；

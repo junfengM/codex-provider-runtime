@@ -18,6 +18,9 @@
 - [x] Auto-reconcile the runtime against Desktop `26.903.71938` (new bundled
   Codex `0.153.4` binary sha) and confirm DeepSeek routing with a live request
   and an app-server tool smoke.
+- [x] Reuse a certified custom binary instead of recompiling when the bundled
+  client digest moves but the public source tag and patch asset are unchanged,
+  with `--no-reuse` as the explicit source-build escape hatch.
 
 ## Completed validation
 

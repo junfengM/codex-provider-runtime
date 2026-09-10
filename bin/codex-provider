@@ -36,7 +36,7 @@ Usage:
   codex-provider install             Configure, build, verify, and activate
   codex-provider status              Show configuration and runtime status
   codex-provider doctor [--live]     Validate config, routing, and optional API call
-  codex-provider update              Reconcile a release for the bundled Codex
+  codex-provider update [--no-reuse] Reconcile a release for the bundled Codex
   codex-provider verify              Run local config and protocol checks
   codex-provider appserver-smoke [model] Test the Remote/app-server DeepSeek tool path
   codex-provider enable              Enable a verified version-matched release
@@ -150,7 +150,7 @@ case "${1:-help}" in
         ;;
     update)
         manager_run install-support
-        manager_run update
+        manager_run update ${2:-}
         manager_run activate-support
         ;;
     verify)

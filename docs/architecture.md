@@ -66,6 +66,13 @@ patched Codex build, the same-version bundled code-mode host, protocol smoke,
 checksums, and an atomic
 symlink switch.
 
+The custom binary is a function of the public source commit and the patch asset,
+so a certified release may be reused when the bundled client digest moves but
+that pair does not. Reuse re-verifies the cached checksum and reported version,
+runs the code-mode-host check and protocol smoke against the cached binary, and
+records the new official digest. An ambiguous source commit, a failed smoke, or
+`--no-reuse` falls back to the source build.
+
 Structural upstream changes are a supported failure state. The updater must
 stop and retain evidence; the launcher must use the official backend until a
 human-reviewed patch update passes the same contract.

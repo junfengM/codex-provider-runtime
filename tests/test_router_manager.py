@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 import sys
+from unittest import mock
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "runtime"))
@@ -271,6 +273,165 @@ class SupportMetadataTests(unittest.TestCase):
             'built_host = bundled_code_mode_host(official_codex)',
             source,
         )
+
+
+class ReleaseReuseTests(unittest.TestCase):
+    COMMIT = "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a"
+    OTHER_COMMIT = "a30ec314bbd0e3721632234d07db7c99855db3b9"
+    SMOKE = {
+        "new_thread_routing": {"deepseek-v4-flash": "deepseek"},
+        "resumed_thread_routing": {"model_provider": "deepseek"},
+        "thread_list_visibility": {"omitted_null_empty_match": True},
+    }
+
+    def write_executable(self, path: Path, body: str) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        path.chmod(0o755)
+        return path
+
+    def fake_client(self, root: Path) -> Path:
+        official = self.write_executable(
+            root / "ChatGPT.app" / "codex", "#!/bin/sh\necho codex-cli 0.153.4\n"
+        )
+        self.write_executable(official.with_name("codex-code-mode-host"), "#!/bin/sh\nexit 0\n")
+        return official
+
+    def write_release(
+        self,
+        install_root: Path,
+        name: str,
+        patch_digest: str,
+        *,
+        commit: str = COMMIT,
+        binary_version: str = "0.153.4",
+        built_at: str = "2026-09-08T11:34:58+00:00",
+    ) -> Path:
+        release = install_root / "releases" / name
+        binary = self.write_executable(
+            release / "codex", f"#!/bin/sh\necho codex-cli {binary_version}\n"
+        )
+        manifest = {
+            "schema": 1,
+            "codex_version": "0.153.4",
+            "source_tag": "rust-v0.153.4",
+            "source_commit": commit,
+            "official_binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+            "official_sha256": "a" * 64,
+            "patch_sha256": patch_digest,
+            "custom_sha256": router_manager.sha256(binary),
+            "code_mode_host_sha256": "b" * 64,
+            "code_mode_host_source": "bundled-with-desktop",
+            "patch": router_manager.PATCH_NAME,
+            "built_at": built_at,
+            "workspace_lock_versions_normalized": 149,
+            "protocol_smoke": self.SMOKE,
+            "tests": ["provider_route unit tests"],
+        }
+        (release / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        return release
+
+    def patch_asset(self) -> Path:
+        return Path(router_manager.__file__).parent / "patches" / "provider_route.rs"
+
+    def test_finds_certified_release_for_same_source_commit_and_patch(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-reuse-test-") as temporary:
+            install_root = Path(temporary)
+            digest = router_manager.sha256(self.patch_asset())
+            release = self.write_release(install_root, "0.153.4-old", digest)
+            self.assertEqual(
+                router_manager.find_certified_release(install_root, "0.153.4", digest),
+                release,
+            )
+
+    def test_ignores_release_with_tampered_binary(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-reuse-test-") as temporary:
+            install_root = Path(temporary)
+            digest = router_manager.sha256(self.patch_asset())
+            release = self.write_release(install_root, "0.153.4-old", digest)
+            (release / "codex").write_text("#!/bin/sh\necho tampered\n", encoding="utf-8")
+            self.assertIsNone(
+                router_manager.find_certified_release(install_root, "0.153.4", digest)
+            )
+
+    def test_ignores_release_with_mismatched_version_or_patch(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-reuse-test-") as temporary:
+            install_root = Path(temporary)
+            digest = router_manager.sha256(self.patch_asset())
+            self.write_release(
+                install_root, "0.153.4-old", digest, binary_version="0.153.3"
+            )
+            self.assertIsNone(
+                router_manager.find_certified_release(install_root, "0.153.4", digest)
+            )
+            self.assertIsNone(
+                router_manager.find_certified_release(install_root, "0.153.4", "0" * 64)
+            )
+
+    def test_ambiguous_source_commit_falls_back_to_a_source_build(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-reuse-test-") as temporary:
+            install_root = Path(temporary)
+            digest = router_manager.sha256(self.patch_asset())
+            self.write_release(install_root, "0.153.4-old", digest)
+            self.write_release(
+                install_root,
+                "0.153.4-newer",
+                digest,
+                commit=self.OTHER_COMMIT,
+                built_at="2026-09-10T10:24:42+00:00",
+            )
+            self.assertIsNone(
+                router_manager.find_certified_release(install_root, "0.153.4", digest)
+            )
+
+    def test_update_reuses_cached_binary_without_cargo_or_source_checkout(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-reuse-test-") as temporary:
+            install_root = Path(temporary)
+            patch_asset = self.patch_asset()
+            digest = router_manager.sha256(patch_asset)
+            cached = self.write_release(install_root, "0.153.4-cached", digest)
+            official = self.fake_client(install_root)
+            with mock.patch.object(
+                router_manager, "protocol_smoke_suite", return_value=self.SMOKE
+            ), mock.patch.object(
+                router_manager,
+                "ensure_source_checkout",
+                side_effect=AssertionError("source checkout must not be required"),
+            ), mock.patch.object(
+                router_manager,
+                "find_cargo",
+                side_effect=AssertionError("cargo must not be required"),
+            ):
+                release = router_manager.build_release(
+                    install_root, official, patch_asset, non_interactive=True
+                )
+            official_digest = router_manager.sha256(official)
+            self.assertEqual(
+                release.name,
+                f"0.153.4-{self.COMMIT[:12]}-{official_digest[:12]}-{digest[:12]}",
+            )
+            manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["official_sha256"], official_digest)
+            self.assertEqual(manifest["reused_from"], cached.name)
+            self.assertEqual(manifest["source_commit"], self.COMMIT)
+            self.assertEqual(
+                manifest["custom_sha256"],
+                router_manager.sha256(cached / "codex"),
+            )
+            self.assertEqual(manifest["protocol_smoke"], self.SMOKE)
+            self.assertTrue((release / "codex-code-mode-host").is_file())
+            self.assertEqual(
+                (install_root / "current").resolve(),
+                release.resolve(),
+            )
+
+    def test_no_reuse_flag_forces_a_source_build(self) -> None:
+        source = Path(router_manager.__file__).read_text(encoding="utf-8")
+        update_block = source.split('if allow_reuse:', 1)[1].split("ensure_source_checkout", 1)[0]
+        self.assertIn("find_certified_release", update_block)
+        self.assertIn("reuse_release", update_block)
 
 
 if __name__ == "__main__":

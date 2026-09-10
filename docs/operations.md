@@ -68,6 +68,16 @@ The updater rebuilds the exact Codex tag only when the bundled backend changes,
 then the stable launcher atomically adopts the matching release. DeepSeek Flash
 continues to use the official native Responses endpoint directly.
 
+When only the bundled client digest moved but the public source tag and patch
+asset are unchanged, the updater reuses the already certified custom binary
+instead of compiling an identical one. Reuse still re-runs the code-mode-host
+check and the full protocol smoke suite against the cached binary, records the
+new official checksum, and activates atomically. Force a source build with:
+
+```bash
+./bin/codex-provider update --no-reuse
+```
+
 Before the offline workspace lock normalization and `--locked` build, the
 updater fetches the exact dependencies selected by the upstream lock file. This
 allows a fresh machine to acquire newly introduced registry or Git dependencies;
