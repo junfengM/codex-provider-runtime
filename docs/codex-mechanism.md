@@ -88,8 +88,8 @@ large, stale prompt in the skill.
 
 A complete validation has three separate checks:
 
-1. `codex debug models` contains `gpt-*`, `deepseek-flash`, and
-   `deepseek-v4-pro`, and no unintegrated DeepSeek model.
+1. `codex debug models` contains `gpt-*` and `deepseek-flash`, and no retired or
+   unintegrated DeepSeek model in the picker.
 2. ChatGPT login is still configured and forced API-only auth is absent.
 3. An ephemeral CLI request executes a real shell tool and returns
    `CODEX_DEEPSEEK_TOOL_OK`.

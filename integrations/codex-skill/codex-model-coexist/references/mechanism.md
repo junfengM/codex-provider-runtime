@@ -41,8 +41,8 @@ Current verified DeepSeek provider contract (2026-09-10):
 
 - base URL `https://api.deepseek.com`;
 - wire API `responses`;
-- `deepseek-flash` (V4.1 Flash) and `deepseek-v4-pro` integrated, plus the
-  retired `deepseek-v4-flash` alias served by V4.1 Flash;
+- `deepseek-flash` (V4.1 Flash, vision enabled) integrated, plus the retired
+  `deepseek-v4-flash` / `deepseek-v4-pro` aliases served by V4.1 Flash;
 - native structured tools, no local protocol gateway.
 
 This contract must be rechecked after upstream announcements.

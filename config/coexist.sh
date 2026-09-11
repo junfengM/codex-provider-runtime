@@ -247,14 +247,13 @@ deepseek_catalog_matches_current_contract() {
   local catalog="$1"
   jq -e '
     ([.models[] | select(.slug == "deepseek-flash")][0]) as $flash
-    | ([.models[] | select(.slug == "deepseek-v4-pro")][0]) as $pro
     | ($flash != null)
-      and ($pro != null)
       and ($flash.context_window == 1048576)
       and ($flash.max_context_window == 1048576)
       and ($flash.support_verbosity == true)
       and ($flash.apply_patch_tool_type == "freeform")
       and ($flash.web_search_tool_type == "text")
+      and ($flash.input_modalities == ["text", "image"])
       and ($flash.supports_parallel_tool_calls == true)
       and ($flash.tool_mode == null)
       and ($flash.use_responses_lite == false)
@@ -262,18 +261,6 @@ deepseek_catalog_matches_current_contract() {
       and ($flash.supports_search_tool == true)
       and ($flash.auto_review_model_override == "deepseek-flash")
       and ([$flash.supported_reasoning_levels[].effort] == ["low", "high", "max"])
-      and ($pro.context_window == 1048576)
-      and ($pro.max_context_window == 1048576)
-      and ($pro.support_verbosity == true)
-      and ($pro.apply_patch_tool_type == "freeform")
-      and ($pro.web_search_tool_type == "text")
-      and ($pro.supports_parallel_tool_calls == true)
-      and ($pro.tool_mode == null)
-      and ($pro.use_responses_lite == false)
-      and ($pro.shell_type == "shell_command")
-      and ($pro.supports_search_tool == true)
-      and ($pro.auto_review_model_override == "deepseek-flash")
-      and ([$pro.supported_reasoning_levels[].effort] == ["low", "high", "max"])
   ' "$catalog" >/dev/null
 }
 
@@ -292,14 +279,8 @@ derive_deepseek_catalog() {
             {
               slug: "deepseek-flash",
               display_name: "DeepSeek-V4.1-Flash",
-              description: "Newest fast frontier agentic coding model (V4.1 Flash).",
+              description: "Newest fast frontier agentic coding model (V4.1 Flash) with vision.",
               priority: 1
-            },
-            {
-              slug: "deepseek-v4-pro",
-              display_name: "DeepSeek-V4-Pro",
-              description: "Most capable DeepSeek model for complex agentic coding.",
-              priority: 2
             }
           ]
           | map(. as $identity | ($base
@@ -309,7 +290,7 @@ derive_deepseek_catalog() {
             | .default_verbosity = "low"
             | .apply_patch_tool_type = "freeform"
             | .web_search_tool_type = "text"
-            | .input_modalities = ["text"]
+            | .input_modalities = ["text", "image"]
             | .supports_image_detail_original = false
             | .truncation_policy = {mode: "tokens", limit: 10000}
             | .supports_parallel_tool_calls = true
@@ -364,8 +345,8 @@ derive_deepseek_catalog() {
   jq -e '
     (.models | length > 0)
     and any(.models[]; .slug == "deepseek-flash")
-    and any(.models[]; .slug == "deepseek-v4-pro")
-  ' "$merged" >/dev/null || die "无法生成完整的 DeepSeek V4 模型目录"
+    and (any(.models[]; .slug == "deepseek-v4-pro") | not)
+  ' "$merged" >/dev/null || die "无法生成完整的 DeepSeek 模型目录"
   deepseek_catalog_matches_current_contract "$merged" \
     || die "生成的模型目录不符合 DeepSeek 2026-08-13 Codex 配置契约"
   install -m 0600 "$merged" "$CUSTOM"

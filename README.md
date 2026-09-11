@@ -1,14 +1,14 @@
 # Codex Provider Runtime
 
 Codex Provider Runtime 是一个 macOS 本地运行时扩展。它让 Codex Desktop 和手机 Remote
-在新建或恢复 `deepseek-flash` / `deepseek-v4-pro` 对话时保持使用 DeepSeek
+在新建或恢复 `deepseek-flash` 对话（含已退役名称的历史线程）时保持使用 DeepSeek
 provider，同时保留 ChatGPT 登录、GPT 模型和 OpenAI provider。
 
-当前版本接入 DeepSeek V4.1 Flash（`deepseek-flash`，2026-09-10 发布）与 V4 Pro-0813。
-旧的 `deepseek-v4-flash` 已被 DeepSeek 退役，但官方仍接受该名称并转发到 V4.1 Flash，
-因此历史会话可以继续恢复与发送。它不修改或重新签名
-`ChatGPT.app`，不重写历史会话 provider，也不支持在同一旧对话中跨 provider 切换。
-两款模型均通过 DeepSeek 官方原生 Responses API 直连。
+当前版本只接入 DeepSeek V4.1 Flash（`deepseek-flash`，2026-09-10 发布，支持图片输入）。
+`deepseek-v4-flash` 与 `deepseek-v4-pro` 已被 DeepSeek 退役并转发到 V4.1 Flash：目录里
+只保留 V4.1 Flash，但路由仍然接受这两个旧名，历史线程可以继续恢复与发送。它不修改或
+重新签名 `ChatGPT.app`，不重写历史会话 provider，也不支持在同一旧对话中跨 provider
+切换。该模型通过 DeepSeek 官方原生 Responses API 直连。
 
 ## 工程形态
 

@@ -13,7 +13,7 @@ stable CODEX_CLI_PATH launcher
 versioned patched Codex app-server
           │ model prefix normalization
           ├── GPT ───────────────────────────► OpenAI provider
-          └── deepseek-flash/v4-pro ─────────► DeepSeek native Responses
+          └── deepseek-flash(+retired names) ► DeepSeek native Responses
 
 thread/list without modelProviders ──────────► all interactive providers
 ```

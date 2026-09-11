@@ -24,6 +24,8 @@
 - [x] Replace the retired `deepseek-v4-flash` catalog entry with
   `deepseek-flash` (DeepSeek-V4.1-Flash) while keeping the retired alias routed,
   and refresh the runtime, docs, and operator skills to the 2026-09-10 contract.
+- [x] Reduce the catalog to `deepseek-flash` only (drop `deepseek-v4-pro`) and
+  enable image input after an endpoint and Codex `exec -i` vision probe passed.
 
 ## Completed validation
 

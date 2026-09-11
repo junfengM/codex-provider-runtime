@@ -1,8 +1,8 @@
 # DeepSeek compatibility matrix
 
 This matrix describes DeepSeek V4.1 Flash (`deepseek-flash`, released
-2026-09-10; retired alias `deepseek-v4-flash`) and V4 Pro-0813 in Codex Desktop
-or a new phone Remote thread.
+2026-09-10; retired aliases `deepseek-v4-flash` and `deepseek-v4-pro`) in Codex
+Desktop or a new phone Remote thread.
 
 | Capability | Status | Adapter behavior |
 |---|---|---|
@@ -20,18 +20,18 @@ or a new phone Remote thread.
 | Auto-review | Supported with trust change | `auto_review_model_override` routes the reviewer to Flash with low effort. |
 | Long-context compaction | Supported locally | Non-OpenAI providers use Codex local compaction, not `/responses/compact`. |
 | Search tool | Official catalog enabled | Uses DeepSeek's current `web_search_tool_type = text` contract. |
-| Image/audio input | Not enabled | V4.1 Flash supports vision upstream (DeepSeek docs, 2026-09-10); the catalog still declares `input_modalities = ["text"]` until Codex image handling is verified end-to-end. |
+| Image input | Supported | Catalog declares `input_modalities = ["text", "image"]`; a Codex `exec -i` run through provider `deepseek` read a generated test image correctly on 2026-09-11. Audio remains unsupported. |
 | More than 128 functions | Upstream limit | Defer or disable unused MCP/plugin tools. |
 | Same-thread provider switching | Out of scope | A DeepSeek thread remains DeepSeek across resume and later turns; deliberate OpenAI ↔ DeepSeek migration is not implemented. |
-| V4 Pro | Supported until 2026-09-14 | Official Pro-0813 exposes Responses and tools; DeepSeek routes every `deepseek-v4-pro` request to V4.1 Flash from 04:00 UTC on 2026-09-14 until V4.1 Pro ships. |
+| V4 Pro | Removed from the picker | DeepSeek routes every `deepseek-v4-pro` request to V4.1 Flash from 04:00 UTC on 2026-09-14 until V4.1 Pro ships; existing Pro threads keep working because the router still routes that slug, but the catalog no longer offers it. |
 
 ## Current client/runtime validation
 
 On 2026-09-10 DeepSeek released V4.1 Flash (`deepseek-flash`) and retired
-V4-Flash; `deepseek-v4-flash` is still accepted and served by V4.1 Flash. The
-runtime routes the new slug, the retired alias, and `deepseek-v4-pro`, and the
-catalog publishes `deepseek-flash` as `DeepSeek-V4.1-Flash` with
-`auto_review_model_override = deepseek-flash`.
+V4-Flash; `deepseek-v4-flash` is still accepted and served by V4.1 Flash. On
+2026-09-11 the catalog was reduced to `deepseek-flash` alone (V4 Pro removed,
+vision enabled) with `auto_review_model_override = deepseek-flash`; routing
+still accepts both retired aliases so historical threads keep working.
 
 On 2026-09-09, the native runtime was rebuilt and activated for Codex Desktop
 `26.901.51231` with bundled Codex CLI `0.153.4` (`rust-v0.153.4`). The source
