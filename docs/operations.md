@@ -41,6 +41,26 @@ The second command creates an ephemeral app-server thread, routes it to
 DeepSeek, asks the official `shell_command` tool to hash a hidden random file,
 and requires the final message to match the locally calculated hash.
 
+## Update an existing install from the repository
+
+The repository is source only; the active runtime lives in the install root and
+the model catalog lives in `$CODEX_HOME/models.json`. On a machine that already
+has the runtime, pulling new commits is not enough:
+
+```bash
+git pull
+./bin/codex-provider update        # runtime binaries + LaunchAgent support
+./bin/codex-provider configure     # model catalog (update never touches it)
+./bin/codex-provider skill-install # both operator skills, including shared copies
+# fully quit and reopen ChatGPT/Codex Desktop
+./bin/codex-provider doctor
+```
+
+`install` on a fresh machine already performs `configure`, the build, and
+activation. Everything else that is machine-local stays manual: the bundled
+ChatGPT.app, the DeepSeek key in the login Keychain, and the optional
+`~/.local/bin/codex` shim used by Open Design.
+
 ## Routine health check
 
 ```bash

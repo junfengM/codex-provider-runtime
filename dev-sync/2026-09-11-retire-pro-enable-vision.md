@@ -38,3 +38,12 @@ DeepSeek 模型目录现在只提供 `deepseek-flash`（DeepSeek-V4.1-Flash）�
 - 路由仍接受 `deepseek-v4-flash` 与 `deepseek-v4-pro`，这是 DeepSeek 的临时兼容
   安排；上游停止兼容前需要迁移历史线程或接受其失效。
 - 图片输入只做了"能识别小图"的验证；尚未验证多图、超大图与图片 + 工具调用组合。
+
+## 补充：多机更新流程写进文档
+
+用户问"别的电脑是不是拉取仓库就行"，而此前仓库只写了新机器 `install` 与 Desktop 升级，
+没有写"已装机器拉取后要跑哪几条"。已在 README 增加"更新已有安装 / 多机复用"一节、在
+`docs/operations.md` 增加 "Update an existing install from the repository"，明确
+`update` 与 `configure` 是两件事，并列出三样本机专属项（ChatGPT.app、Keychain key、
+可选 shim）。同时把 README 里过期的 `test-deepseek deepseek-v4-pro` 示例改为
+`deepseek-flash`。

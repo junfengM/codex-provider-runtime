@@ -108,6 +108,29 @@ cd codex-provider-runtime
 （默认 `~/ai/shared/skills/`，可用 `CODEX_SHARED_SKILLS_ROOT` 覆盖）且其中已有同名技能，
 它会一并刷新到同一版本，避免两份 skill 漂移。
 
+## 更新已有安装 / 多机复用
+
+仓库只是源码；真正生效的是安装态（`~/.codex/provider-runtime`）和模型目录
+（`~/.codex/models.json`）。因此**已经装过的机器**拉取新版本后，还要显式部署一次：
+
+```bash
+cd <仓库目录>
+git pull
+./bin/codex-provider update        # 部署管理器/补丁并激活；同源码 tag 时秒级复用，不重新编译
+./bin/codex-provider configure     # 刷新模型目录（update 不会动目录）
+./bin/codex-provider skill-install # 同步两个 skill（含共享目录副本）
+# 完全退出并重新打开 ChatGPT/Codex Desktop
+./bin/codex-provider doctor        # 可选：结构 + 路由检查；加 --live 会发一次真实请求
+```
+
+`update` 只更新运行时二进制，`configure` 才更新模型目录，两者都要跑。新机器直接用
+`install` 即可，它内部已经包含 `configure`、构建与激活。
+
+三样东西不在仓库里，必须在每台机器本机处理：`/Applications/ChatGPT.app` 本体、
+Keychain 里的 DeepSeek API Key（`keychain-set`，不会跨机同步），以及可选的
+`~/.local/bin/codex` 转发 shim（用于 Open Design + Local DeepSeek，源文件在共享 skills
+目录）。
+
 ## 常用命令
 
 ```bash
@@ -116,7 +139,7 @@ codex-provider doctor
 codex-provider doctor --live
 codex-provider update
 codex-provider verify
-codex-provider test-deepseek deepseek-v4-pro
+codex-provider test-deepseek deepseek-flash
 codex-provider keychain-status
 codex-provider appserver-smoke
 codex-provider history deepseek
@@ -132,9 +155,10 @@ codex-provider uninstall
   验证的自编译二进制（仍会重跑 code-mode-host 检查和协议 smoke），需要强制源码重建时用
   `update --no-reuse`；
 - `uninstall`：卸载 LaunchAgent 和环境入口，保留 releases、配置与 Keychain；
-- `test-deepseek [model]`：指定 Flash 或 Pro 的本地 CLI 真实结构化工具调用闭环；
+- `test-deepseek [model]`：对 `deepseek-flash`（或退役名的兼容路由）跑一次本地 CLI 真实
+  结构化工具调用闭环；
 - `keychain-status`：只检查 DeepSeek Keychain 项是否存在，不读取或打印 API Key；
-- `appserver-smoke [model]`：指定 Flash 或 Pro，使用手机 Remote 相同的 app-server
+- `appserver-smoke [model]`：使用手机 Remote 相同的 app-server
   公共协议，执行隐藏 SHA-256 挑战并验证本机 `commandExecution`；
 - `doctor --live`：组合结构检查与一次临时 DeepSeek 请求。
 
