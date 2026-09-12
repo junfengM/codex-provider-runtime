@@ -106,6 +106,11 @@ activation, the runtime keeps the current and one rollback release, removes all
 source worktrees, and clears Cargo build products. Run `codex-provider cleanup`
 to apply the same bounded-retention policy on demand.
 
+Source builds use one Cargo job and a memory-bounded release profile: LTO is
+disabled, code generation uses one unit, and debug/symbol data is removed. The
+result is still gated by the exact version check, route unit tests, and full
+app-server protocol smoke before activation.
+
 Before the offline workspace lock normalization and `--locked` build, the
 updater fetches the exact dependencies selected by the upstream lock file. This
 allows a fresh machine to acquire newly introduced registry or Git dependencies;

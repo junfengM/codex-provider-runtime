@@ -1440,6 +1440,14 @@ def build_release(
     cargo_target.mkdir(parents=True, exist_ok=True)
     build_env = os.environ.copy()
     build_env["CARGO_TARGET_DIR"] = os.fspath(cargo_target)
+    # The Codex release graph is large enough for Cargo's default parallelism
+    # and thin-LTO link to exhaust memory on desktop Macs. Prefer a predictable,
+    # low-memory build; protocol and binary-version smokes remain authoritative.
+    build_env["CARGO_BUILD_JOBS"] = "1"
+    build_env["CARGO_PROFILE_RELEASE_LTO"] = "false"
+    build_env["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] = "1"
+    build_env["CARGO_PROFILE_RELEASE_DEBUG"] = "none"
+    build_env["CARGO_PROFILE_RELEASE_STRIP"] = "symbols"
     lock_versions_normalized = normalize_release_lock(
         cargo, cargo_root, source, version, build_env
     )
