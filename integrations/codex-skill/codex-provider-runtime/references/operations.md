@@ -10,6 +10,7 @@ codex-provider install
 codex-provider status
 codex-provider doctor [--live]
 codex-provider update
+codex-provider cleanup
 codex-provider verify
 codex-provider disable
 codex-provider enable
@@ -20,6 +21,14 @@ codex-provider uninstall
 tests the native patch, installs generic LaunchAgents, and activates the stable
 launcher. It may download source and compile Rust, so use it only for an
 explicit install request.
+
+An unattended failure writes a fingerprinted backoff marker. Scheduled runs
+skip the unchanged Codex-binary/provider-patch combination; a changed binary or
+patch retries automatically, and manual `update` always forces a retry. After a
+successful activation, bounded retention keeps the current and one rollback
+release and removes source worktrees and Cargo products. `cleanup` applies the
+same policy immediately without touching configuration, credentials, or
+conversations.
 
 The build fetches the exact upstream lock-file dependencies before its offline
 workspace-version normalization. It then rejects any lock diff beyond expected

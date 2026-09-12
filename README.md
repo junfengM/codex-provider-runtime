@@ -138,6 +138,7 @@ codex-provider status
 codex-provider doctor
 codex-provider doctor --live
 codex-provider update
+codex-provider cleanup
 codex-provider verify
 codex-provider test-deepseek deepseek-flash
 codex-provider keychain-status
@@ -150,6 +151,7 @@ codex-provider uninstall
 ```
 
 - `disable`：保留安装与凭据，下一次启动回退官方后端；
+- `cleanup`：保留当前 release 和一个回退 release，移除源码 worktree 与 Cargo 构建产物；
 - `enable`：解除禁用标记，但仍要求版本完全匹配；
 - `update`：Desktop 更新后重新认证并激活；当公开源码 tag 与补丁资产未变时，直接复用已
   验证的自编译二进制（仍会重跑 code-mode-host 检查和协议 smoke），需要强制源码重建时用
@@ -173,6 +175,11 @@ codex-provider uninstall
 从仓库执行 `codex-provider update` 时会先暂停已加载的定时更新器并同步新版补丁资产，
 构建和验证结束后再重新加载。这样旧更新器无法在新 release 激活与支持文件同步之间把
 `current` 竞态切回旧补丁；后台定时更新仍直接使用已安装、已同步的管理器。
+
+后台更新失败后会按“Codex 二进制 + Provider 补丁”记录退避标记；相同输入不再每 15 分钟
+重复下载、打补丁或编译，只有 Codex 或补丁发生变化时才自动重试。手动执行 `update` 仍会
+强制重试。每次成功激活后，运行时只保留当前 release 和一个回退 release，并清除源码
+worktree 与 Cargo 构建产物，避免长期累积多 GB 缓存。
 
 若客户端版本与自定义发布不一致、精确标签尚未发布、源码结构改变或构建失败，稳定启动器
 会使用 ChatGPT.app 内置官方后端。它不会让旧自定义二进制冒充新版本。此时 GPT 继续可用，

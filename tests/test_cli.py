@@ -55,6 +55,7 @@ class CliTests(unittest.TestCase):
             "install",
             "doctor",
             "update",
+            "cleanup",
             "disable",
             "uninstall",
             "test-deepseek",

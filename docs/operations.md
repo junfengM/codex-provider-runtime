@@ -98,6 +98,14 @@ new official checksum, and activates atomically. Force a source build with:
 ./bin/codex-provider update --no-reuse
 ```
 
+An unattended failure is memoized by the bundled Codex version and hashes of
+the official binary and provider patch. Scheduled runs skip that unchanged
+failure; a new Codex binary or provider patch automatically makes it eligible
+again, while a manual `codex-provider update` always retries. After a certified
+activation, the runtime keeps the current and one rollback release, removes all
+source worktrees, and clears Cargo build products. Run `codex-provider cleanup`
+to apply the same bounded-retention policy on demand.
+
 Before the offline workspace lock normalization and `--locked` build, the
 updater fetches the exact dependencies selected by the upstream lock file. This
 allows a fresh machine to acquire newly introduced registry or Git dependencies;

@@ -54,6 +54,46 @@ def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
 
 
+def update_fingerprint(official_codex: Path, patch_asset: Path) -> str:
+    payload = "\n".join(
+        (codex_version(official_codex), sha256(official_codex), sha256(patch_asset))
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def failed_update_path(install_root: Path, fingerprint: str) -> Path:
+    return install_root / "failed-updates" / f"{fingerprint}.json"
+
+
+def record_failed_update(
+    install_root: Path,
+    fingerprint: str,
+    official_codex: Path,
+    error: BaseException,
+) -> Path:
+    destination = failed_update_path(install_root, fingerprint)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(f".json.next.{os.getpid()}")
+    payload = {
+        "schema": 1,
+        "failed_at": utc_now(),
+        "codex_version": codex_version(official_codex),
+        "official_sha256": sha256(official_codex),
+        "error": str(error)[:2000],
+    }
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    os.replace(temporary, destination)
+    return destination
+
+
+def clear_failed_update(install_root: Path, fingerprint: str) -> None:
+    marker = failed_update_path(install_root, fingerprint)
+    if marker.exists():
+        marker.unlink()
+
+
 def run(
     argv: Sequence[Union[str, os.PathLike]],
     *,
@@ -271,24 +311,12 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
                 &mut request_overrides,
                 &mut typesafe_overrides,
             )
-            .await;
-
-        // Derive a Config using the same logic as new conversation, honoring overrides if provided.
-"""
-    resume_replacement = """        let persisted_metadata = self
-            .load_and_apply_persisted_resume_metadata(
-                &thread_history,
-                &mut request_overrides,
-                &mut typesafe_overrides,
-            )
-            .await;
+            .await;"""
+    resume_replacement = resume_anchor + """
         typesafe_overrides.model_provider = model_provider_for_resume(
             typesafe_overrides.model.as_deref(),
             typesafe_overrides.model_provider.clone(),
-        );
-
-        // Derive a Config using the same logic as new conversation, honoring overrides if provided.
-"""
+        );"""
     if RESUME_CALL_MARKER not in thread_text:
         thread_text = replace_once(
             thread_text,
@@ -1054,6 +1082,82 @@ def activate_release(install_root: Path, release_name: str) -> None:
     os.replace(temporary, current)
 
 
+def prune_runtime(install_root: Path, *, keep_releases: int = 2) -> dict[str, int]:
+    """Bound version-coupled state after a certified release is activated."""
+    if keep_releases < 1:
+        raise RouterError("keep_releases must be at least one")
+
+    removed = {"releases": 0, "builds": 0, "cargo_targets": 0}
+    releases_root = install_root / "releases"
+    current = install_root / "current"
+    active = current.resolve() if current.is_symlink() else None
+    releases = (
+        sorted(
+            (
+                path
+                for path in releases_root.iterdir()
+                if path.is_dir() and not path.name.startswith(".staging-")
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if releases_root.is_dir()
+        else []
+    )
+    keep: set[Path] = set()
+    if active is not None:
+        keep.add(active)
+    for release in releases:
+        if len(keep) >= keep_releases:
+            break
+        keep.add(release.resolve())
+    for release in releases:
+        if release.resolve() not in keep:
+            shutil.rmtree(release)
+            removed["releases"] += 1
+
+    builds_root = install_root / "builds"
+    repo = install_root / "cache" / "codex"
+    if builds_root.is_dir():
+        for build in list(builds_root.iterdir()):
+            if not build.is_dir():
+                continue
+            source = build / "source"
+            if source.is_dir() and (repo / ".git").exists():
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        os.fspath(repo),
+                        "worktree",
+                        "remove",
+                        "--force",
+                        os.fspath(source),
+                    ],
+                    check=False,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+            if build.exists():
+                shutil.rmtree(build)
+            removed["builds"] += 1
+        if (repo / ".git").exists():
+            subprocess.run(
+                ["git", "-C", os.fspath(repo), "worktree", "prune"],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+    cargo_target = install_root / "cache" / "cargo-target"
+    if cargo_target.is_dir():
+        shutil.rmtree(cargo_target)
+        removed["cargo_targets"] = 1
+    return removed
+
+
 def verify_existing_release(release: Path, manifest: dict, version: str) -> None:
     custom = release / "codex"
     host = release / "codex-code-mode-host"
@@ -1716,6 +1820,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="store_true",
         help="always rebuild from source instead of reusing a certified binary",
     )
+    cleanup = subparsers.add_parser("cleanup")
+    cleanup.add_argument("--keep-releases", type=int, default=2)
     verify = subparsers.add_parser("verify-patch")
     verify.add_argument("--source", type=Path, required=True)
     smoke = subparsers.add_parser("smoke")
@@ -1743,6 +1849,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         if args.command == "status":
             return status(args.install_root, args.official_codex)
+        if args.command == "cleanup":
+            print(
+                json.dumps(
+                    prune_runtime(args.install_root, keep_releases=args.keep_releases),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
         if args.command == "verify-patch":
             verify_patch(args.source.resolve(), patch_asset)
             return 0
@@ -1787,14 +1902,47 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 print("Another router update is already running")
                 return 0
             try:
-                release = build_release(
-                    args.install_root,
-                    args.official_codex,
-                    patch_asset,
-                    non_interactive=args.non_interactive,
-                    allow_reuse=not args.no_reuse,
-                )
+                fingerprint = update_fingerprint(args.official_codex, patch_asset)
+                previous_failure = failed_update_path(args.install_root, fingerprint)
+                if args.non_interactive and previous_failure.is_file():
+                    print(
+                        "Skipping unchanged failed update; retry when the Codex binary or "
+                        f"provider patch changes: {previous_failure}"
+                    )
+                    return 0
+                try:
+                    release = build_release(
+                        args.install_root,
+                        args.official_codex,
+                        patch_asset,
+                        non_interactive=args.non_interactive,
+                        allow_reuse=not args.no_reuse,
+                    )
+                except (
+                    RouterError,
+                    subprocess.CalledProcessError,
+                    OSError,
+                    json.JSONDecodeError,
+                ) as error:
+                    if args.non_interactive:
+                        marker = record_failed_update(
+                            args.install_root,
+                            fingerprint,
+                            args.official_codex,
+                            error,
+                        )
+                        print(
+                            f"Recorded unchanged-version backoff: {marker}",
+                            file=sys.stderr,
+                        )
+                    raise
+                clear_failed_update(args.install_root, fingerprint)
+                removed = prune_runtime(args.install_root)
                 print(f"Activated router release: {release}")
+                print(
+                    "Pruned version-coupled state: "
+                    f"{json.dumps(removed, sort_keys=True)}"
+                )
                 return 0
             finally:
                 lock.close()
