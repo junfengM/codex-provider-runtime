@@ -30,6 +30,11 @@ release and removes source worktrees and Cargo products. `cleanup` applies the
 same policy immediately without touching configuration, credentials, or
 conversations.
 
+Source builds intentionally use one Cargo job with release LTO disabled, one
+codegen unit, and debug/symbol data removed to bound compile and link memory on
+Desktop Macs. Do not remove these limits merely to shorten a build; the cached
+binary reuse path is the preferred speed optimization.
+
 The build fetches the exact upstream lock-file dependencies before its offline
 workspace-version normalization. It then rejects any lock diff beyond expected
 workspace package version changes, so a newly introduced Git dependency can be

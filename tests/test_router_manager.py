@@ -275,6 +275,18 @@ class SupportMetadataTests(unittest.TestCase):
             source,
         )
 
+    def test_source_build_uses_bounded_memory_profile(self) -> None:
+        source = Path(router_manager.__file__).read_text(encoding="utf-8")
+        self.assertIn('build_env["CARGO_BUILD_JOBS"] = "1"', source)
+        self.assertIn('build_env["CARGO_PROFILE_RELEASE_LTO"] = "false"', source)
+        self.assertIn(
+            'build_env["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] = "1"', source
+        )
+        self.assertIn('build_env["CARGO_PROFILE_RELEASE_DEBUG"] = "none"', source)
+        self.assertIn(
+            'build_env["CARGO_PROFILE_RELEASE_STRIP"] = "symbols"', source
+        )
+
 
 class ReleaseReuseTests(unittest.TestCase):
     COMMIT = "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a"

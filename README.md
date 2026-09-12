@@ -181,6 +181,10 @@ codex-provider uninstall
 强制重试。每次成功激活后，运行时只保留当前 release 和一个回退 release，并清除源码
 worktree 与 Cargo 构建产物，避免长期累积多 GB 缓存。
 
+必须从源码构建时，运行时固定使用单 Cargo job，并关闭 release LTO、单 codegen unit、
+移除调试信息和符号，以控制 Desktop Mac 上的编译与链接内存峰值。最终二进制仍须通过
+版本校验、路由单元测试和完整 app-server 协议 smoke 才能激活。
+
 若客户端版本与自定义发布不一致、精确标签尚未发布、源码结构改变或构建失败，稳定启动器
 会使用 ChatGPT.app 内置官方后端。它不会让旧自定义二进制冒充新版本。此时 GPT 继续可用，
 而 DeepSeek 新线程/恢复线程路由可能暂时不可用，直到补丁适配新版本。
