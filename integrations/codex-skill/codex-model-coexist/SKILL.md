@@ -96,7 +96,13 @@ For an authorized configuration or upgrade:
 ./bin/codex-provider configure
 ./bin/codex-provider update
 ./bin/codex-provider verify
+./bin/codex-provider cleanup
 ```
+
+The scheduled updater memoizes an unchanged failed Codex-binary/provider-patch
+combination instead of rebuilding every 15 minutes. Successful activation and
+manual `cleanup` retain the current and one rollback release while removing
+version-coupled source and Cargo build state.
 
 Use `doctor --live` or `appserver-smoke` only when one paid ephemeral DeepSeek
 request is appropriate. The app-server smoke must observe provider `deepseek`,

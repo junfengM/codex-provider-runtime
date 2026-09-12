@@ -52,7 +52,14 @@ Use:
 ```bash
 codex-provider update
 codex-provider verify
+codex-provider cleanup
 ```
+
+Scheduled failures are memoized by the bundled Codex binary and provider patch.
+Do not remove the marker merely to make an unchanged background build retry;
+manual `update` is the explicit force-retry path. A successful activation keeps
+the current and one rollback release and removes version-coupled source/Cargo
+build state. `cleanup` applies that same retention policy on demand.
 
 After a Desktop upgrade, upstream model change, or activated release, fully
 restart Desktop and verify one GPT and one currently supported DeepSeek new
