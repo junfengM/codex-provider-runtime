@@ -44,13 +44,15 @@ and requires the final message to match the locally calculated hash.
 ## Update an existing install from the repository
 
 The repository is source only; the active runtime lives in the install root and
-the model catalog lives in `$CODEX_HOME/models.json`. On a machine that already
-has the runtime, pulling new commits is not enough:
+the model catalogs live in `$CODEX_HOME` (`models.json` for the validated
+DeepSeek entries, `models-coexist.json` for the merged catalog that
+`model_catalog_json` points at). On a machine that already has the runtime,
+pulling new commits is not enough:
 
 ```bash
 git pull
 ./bin/codex-provider update        # runtime binaries + LaunchAgent support
-./bin/codex-provider configure     # model catalog (update never touches it)
+./bin/codex-provider sync-models   # newly released official models (also tried by update)
 ./bin/codex-provider skill-install # both operator skills, including shared copies
 # fully quit and reopen ChatGPT/Codex Desktop
 ./bin/codex-provider doctor
@@ -60,6 +62,33 @@ git pull
 activation. Everything else that is machine-local stays manual: the bundled
 ChatGPT.app, the DeepSeek key in the login Keychain, and the optional
 `~/.local/bin/codex` shim used by Open Design.
+
+## Model catalog refresh
+
+`model_catalog_json` is a startup snapshot. Once it is pinned, the client never
+replaces it with the account's live model list, so a newly released GPT model
+stays invisible in the picker until the merged catalog is rebuilt. `update`
+attempts that refresh after activation; when the machine is offline, or the
+run needs a network/login combination that is unavailable, it only prints a
+warning.
+
+```bash
+./bin/codex-provider sync-models            # refresh the live list, rebuild, re-pin
+./bin/codex-provider sync-models --check    # offline drift report, exit 1 when stale
+./bin/codex-provider status                 # prints the drift count when the catalog lags
+```
+
+`sync-models` backs up `config.toml` and both catalogs first, briefly removes
+`model_catalog_json`, runs `codex debug models` to fetch the account's live
+list, rebuilds the merged catalog, re-pins it, and then re-reads the catalog
+through the client. Any failure, including Ctrl-C, restores the backed-up
+`config.toml`, so the machine never stays unpinned. The default model and
+reasoning effort are left untouched; use `configure` only when you also want
+the default model reset to the official first entry with `medium` effort.
+
+Sync the catalog after any Desktop upgrade or upstream model announcement. A
+catalog that lags is not a routing failure: routing still works, the new model
+is simply not offered yet.
 
 ## Routine health check
 

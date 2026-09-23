@@ -33,6 +33,7 @@ Usage:
   codex-provider keychain-set        Store the DeepSeek API key without echo
   codex-provider keychain-status     Check Keychain presence without reading it
   codex-provider configure           Preserve ChatGPT and merge DeepSeek models
+  codex-provider sync-models [--check] Add newly released models; --check only reports drift
   codex-provider install             Configure, build, verify, and activate
   codex-provider status              Show configuration and runtime status
   codex-provider doctor [--live]     Validate config, routing, and optional API call
@@ -132,6 +133,9 @@ case "${1:-help}" in
     configure)
         bash "$config_tool" enable-both
         ;;
+    sync-models)
+        bash "$config_tool" sync-models "${2:-}"
+        ;;
     install)
         prerequisites
         self_test
@@ -153,6 +157,10 @@ case "${1:-help}" in
         manager_run install-support
         manager_run update ${2:-}
         manager_run activate-support
+        # Desktop 升级常带来新模型；尽力顺带补齐目录，失败不影响已完成的激活。
+        if ! bash "$config_tool" sync-models; then
+            printf '\nModel catalog sync failed or skipped. Re-run: codex-provider sync-models\n'
+        fi
         ;;
     cleanup)
         manager_run cleanup --keep-releases 2

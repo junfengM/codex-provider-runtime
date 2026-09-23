@@ -26,6 +26,10 @@
   and refresh the runtime, docs, and operator skills to the 2026-09-10 contract.
 - [x] Reduce the catalog to `deepseek-flash` only (drop `deepseek-v4-pro`) and
   enable image input after an endpoint and Codex `exec -i` vision probe passed.
+- [x] Add `codex-provider sync-models` so a pinned merged catalog picks up newly
+  released official models (for example the GPT-6 family) in one command on any
+  machine, with an offline `--check` drift report, a lock, and automatic
+  `config.toml` rollback on failure or interrupt.
 
 ## Completed validation
 

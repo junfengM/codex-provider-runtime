@@ -6,6 +6,7 @@ The standalone CLI owns the lifecycle:
 codex-provider prerequisites
 codex-provider keychain-set
 codex-provider configure
+codex-provider sync-models
 codex-provider install
 codex-provider status
 codex-provider doctor [--live]
@@ -44,6 +45,15 @@ cached without weakening the fail-closed dependency contract.
 request. `disable` creates a fail-safe marker and takes effect after Desktop is
 restarted. `uninstall` unloads support jobs and moves their plists to a backup;
 it does not purge releases, credentials, or conversations.
+
+Because the merged model catalog is a pinned startup snapshot, a newly
+released official model stays invisible until it is rebuilt.
+`codex-provider sync-models` unpins the override briefly, fetches the live
+official list, rebuilds and validates the merged catalog, re-pins it, and
+restores the previous `config.toml` on any failure or interrupt; the default
+model is preserved. `sync-models --check` reports offline drift without
+writing. `update` attempts one sync after activation and only warns if it
+cannot run.
 
 On upstream mismatch or patch drift, retain the failure log and use the bundled
 official backend. Never force an old custom release against a newer client.

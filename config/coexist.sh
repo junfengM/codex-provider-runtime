@@ -11,7 +11,8 @@
 #   coexist.sh set-default-deepseek  enable-deepseek 的兼容别名
 #   coexist.sh set-model <模型> [provider]  设置默认模型（可选指定 provider）
 #   coexist.sh merge                 合并官方与自定义模型目录
-#   coexist.sh refresh               刷新官方与自定义模型的合并目录
+#   coexist.sh refresh               用本机官方缓存重建合并目录（不联网）
+#   coexist.sh sync-models [--check]  联网刷新官方清单并补齐新模型；--check 只检测漂移
 #   coexist.sh backup                备份当前 config.toml / models.json
 #   coexist.sh restore [备份文件]     从备份还原 config.toml
 #   coexist.sh validate              用 codex debug models / doctor 校验
@@ -31,6 +32,7 @@ DEEPSEEK_KEYCHAIN_SERVICE="${DEEPSEEK_KEYCHAIN_SERVICE:-com.openai.codex.deepsee
 DEEPSEEK_KEYCHAIN_ACCOUNT="${DEEPSEEK_KEYCHAIN_ACCOUNT:-$(id -un)}"
 
 REMOVE="__TOML_REMOVE__"
+LAST_BACKUP_CONFIG=""
 
 find_codex() {
   if [ -n "${CODEX_CLI_PATH:-}" ] && [ -x "$CODEX_CLI_PATH" ]; then
@@ -265,7 +267,7 @@ deepseek_catalog_matches_current_contract() {
 }
 
 derive_deepseek_catalog() {
-  [ -f "$CACHE" ] || die "缺少官方模型缓存 $CACHE (先运行一次 Codex 生成)"
+  [ -f "$CACHE" ] || die "缺少官方模型缓存 $CACHE；先运行 codex-provider sync-models 生成（需要联网与 ChatGPT 登录）"
   command -v jq >/dev/null 2>&1 || die "未找到 jq"
 
   local derived merged
@@ -362,6 +364,7 @@ backup() {
   cp "$CONFIG" "$BACKUP_DIR/config.$ts.toml"
   [ -f "$CUSTOM" ] && cp "$CUSTOM" "$BACKUP_DIR/models.$ts.json"
   [ -f "$COEXIST" ] && cp "$COEXIST" "$BACKUP_DIR/models-coexist.$ts.json"
+  LAST_BACKUP_CONFIG="$BACKUP_DIR/config.$ts.toml"
   info "已备份到 $BACKUP_DIR (${ts})"
 }
 
@@ -395,6 +398,28 @@ official_default_model() {
   fi
 }
 
+catalog_slugs() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  jq -r '.models[]?.slug' "$file" 2>/dev/null | grep -v '^null$' || true
+}
+
+file_mtime() {
+  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || printf '0'
+}
+
+# 官方缓存里有、当前固定目录里没有的模型（离线漂移检测，不联网）
+catalog_missing_slugs() {
+  local catalog
+  catalog="$(config_get model_catalog_json)"
+  [ -n "$catalog" ] || return 0
+  [ -f "$catalog" ] || return 0
+  [ -f "$CACHE" ] || return 0
+  comm -23 \
+    <(catalog_slugs "$CACHE" | sort -u) \
+    <(catalog_slugs "$catalog" | sort -u) || true
+}
+
 enable_both() {
   require_config
   backup
@@ -418,6 +443,184 @@ refresh() {
   ensure_deepseek_provider
   ensure_both_catalog
   info "已刷新 ChatGPT 与 DeepSeek 的合并模型目录。"
+}
+
+# ---- sync-models：联网刷新官方清单、补齐新模型，并保留当前默认模型 ----
+
+SYNC_LOCK_DIR=""
+SYNC_WORK_DIR=""
+SYNC_RESTORE_CONFIG=""
+SYNC_ACTIVE=0
+
+sync_release() {
+  if [ -n "$SYNC_LOCK_DIR" ]; then
+    rm -rf "$SYNC_LOCK_DIR" 2>/dev/null || true
+    SYNC_LOCK_DIR=""
+  fi
+  if [ -n "$SYNC_WORK_DIR" ]; then
+    rm -rf "$SYNC_WORK_DIR"
+    SYNC_WORK_DIR=""
+  fi
+}
+
+# 异常退出时把 config.toml 还原到操作前的备份，避免目录停在未固定状态。
+sync_rollback() {
+  [ "$SYNC_ACTIVE" = "1" ] || return 0
+  SYNC_ACTIVE=0
+  if [ -n "$SYNC_RESTORE_CONFIG" ] && [ -f "$SYNC_RESTORE_CONFIG" ]; then
+    cp "$SYNC_RESTORE_CONFIG" "$CONFIG"
+    chmod 0600 "$CONFIG"
+    printf '已回滚 config.toml（备份：%s）\n' "$SYNC_RESTORE_CONFIG" >&2
+  fi
+}
+
+sync_cleanup() {
+  sync_rollback
+  sync_release
+}
+
+sync_acquire_lock() {
+  local lock="$CODEX_DIR/.sync-models.lock" pid
+  if ! mkdir "$lock" 2>/dev/null; then
+    pid="$(cat "$lock/pid" 2>/dev/null || true)"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      die "另一个 sync-models 正在运行（pid $pid）；结束后重试"
+    fi
+    rm -rf "$lock"
+    mkdir "$lock" 2>/dev/null || die "无法创建锁目录 $lock"
+  fi
+  printf '%s\n' "$$" > "$lock/pid"
+  SYNC_LOCK_DIR="$lock"
+}
+
+# 刷新结果以客户端写出的 models_cache.json 为准；客户端没写缓存时才用标准输出兜底。
+sync_install_official_cache() {
+  local stdout_file="$1" started_at="$2" cache_slugs stdout_slugs
+  jq -e 'any(.models[]?; .slug | startswith("gpt-"))' "$stdout_file" >/dev/null 2>&1 \
+    || die "刷新结果里没有 GPT 模型；检查 ChatGPT 登录与网络后重试"
+  stdout_slugs="$(catalog_slugs "$stdout_file" | sort -u)"
+  if [ -f "$CACHE" ] && jq -e '.models | length > 0' "$CACHE" >/dev/null 2>&1; then
+    cache_slugs="$(catalog_slugs "$CACHE" | sort -u)"
+    [ "$cache_slugs" = "$stdout_slugs" ] && return 0
+    [ "$(file_mtime "$CACHE")" -ge "$((started_at - 1))" ] && return 0
+  fi
+  install -m 0600 "$stdout_file" "$CACHE"
+  info "客户端未更新模型缓存，已按本次刷新结果写入 $CACHE。"
+}
+
+sync_verify_loaded_catalog() {
+  local loaded_file="$1" missing
+  missing="$(comm -23 \
+    <(catalog_slugs "$CACHE" | sort -u) \
+    <(catalog_slugs "$loaded_file" | sort -u) || true)"
+  if [ -n "$missing" ]; then
+    printf '重新固定后依旧缺少官方模型: %s\n' "$(printf '%s' "$missing" | tr '\n' ' ')" >&2
+    return 1
+  fi
+  catalog_slugs "$loaded_file" | grep -qx 'deepseek-flash' || {
+    printf '重新固定后缺少 deepseek-flash\n' >&2
+    return 1
+  }
+  return 0
+}
+
+sync_report_diff() {
+  local before="$1" after="$2" added removed
+  added="$(comm -13 \
+    <(printf '%s\n' "$before" | grep -v '^$' | sort -u) \
+    <(printf '%s\n' "$after" | grep -v '^$' | sort -u) || true)"
+  removed="$(comm -23 \
+    <(printf '%s\n' "$before" | grep -v '^$' | sort -u) \
+    <(printf '%s\n' "$after" | grep -v '^$' | sort -u) || true)"
+  if [ -n "$added" ]; then
+    info "新增模型: $(printf '%s' "$added" | tr '\n' ' ')"
+  else
+    info "没有新增模型。"
+  fi
+  if [ -n "$removed" ]; then
+    info "移除模型: $(printf '%s' "$removed" | tr '\n' ' ')"
+  fi
+}
+
+sync_models_check() {
+  require_config
+  command -v jq >/dev/null 2>&1 || die "未找到 jq"
+  local catalog missing
+  catalog="$(config_get model_catalog_json)"
+  if [ -z "$catalog" ]; then
+    info "config.toml 未固定模型目录（缺少 model_catalog_json）"
+    return 1
+  fi
+  if [ ! -f "$catalog" ]; then
+    info "模型目录不存在: $catalog"
+    return 1
+  fi
+  if [ ! -f "$CACHE" ]; then
+    info "缺少官方模型缓存 $CACHE"
+    info "运行 codex-provider sync-models 生成并合并。"
+    return 1
+  fi
+  missing="$(catalog_missing_slugs)"
+  if [ -n "$missing" ]; then
+    info "模型目录落后于官方缓存，缺少 $(printf '%s\n' "$missing" | wc -l | tr -d ' ') 个模型:"
+    printf '%s\n' "$missing" | sed 's/^/  /'
+    info "运行 codex-provider sync-models 补齐新模型。"
+    return 1
+  fi
+  info "模型目录已包含官方缓存中的全部模型（共 $(catalog_slugs "$catalog" | wc -l | tr -d ' ') 个）。"
+  return 0
+}
+
+sync_models() {
+  local mode="${1:-}"
+  case "$mode" in
+    '') ;;
+    --check) sync_models_check; return $? ;;
+    *) die "用法: coexist.sh sync-models [--check]" ;;
+  esac
+
+  require_config
+  command -v jq >/dev/null 2>&1 || die "未找到 jq"
+  [ -n "$CODEX_BIN" ] || die "未找到 codex CLI"
+
+  sync_acquire_lock
+  trap 'sync_cleanup' EXIT INT TERM
+
+  backup
+  SYNC_RESTORE_CONFIG="$LAST_BACKUP_CONFIG"
+  SYNC_ACTIVE=1
+
+  local before after started_at stdout_file loaded_file
+  before="$(catalog_slugs "$(config_get model_catalog_json)" | sort -u)"
+  [ -n "$before" ] || before="$(catalog_slugs "$CACHE" | sort -u)"
+
+  ensure_deepseek_provider
+
+  SYNC_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-sync-models.XXXXXX")"
+  stdout_file="$SYNC_WORK_DIR/models.json"
+  loaded_file="$SYNC_WORK_DIR/loaded.json"
+  started_at="$(date +%s)"
+
+  # Codex 只在未固定目录时拉取服务端清单，这里短暂解除固定，刷新后立即写回。
+  toml_set model_catalog_json "$REMOVE"
+  if ! "$CODEX_BIN" debug models > "$stdout_file" 2> "$SYNC_WORK_DIR/stderr.log"; then
+    tail -n 5 "$SYNC_WORK_DIR/stderr.log" >&2 || true
+    die "codex debug models 刷新失败；检查网络与 ChatGPT 登录后重试"
+  fi
+  sync_install_official_cache "$stdout_file" "$started_at"
+
+  ensure_both_catalog
+  if ! "$CODEX_BIN" debug models > "$loaded_file" 2>/dev/null; then
+    die "重新固定目录后 codex debug models 失败"
+  fi
+  sync_verify_loaded_catalog "$loaded_file" || die "模型目录校验失败"
+
+  SYNC_ACTIVE=0
+
+  after="$(catalog_slugs "$COEXIST" | sort -u)"
+  sync_report_diff "$before" "$after"
+  info "合并目录已更新: $COEXIST"
+  info "完全退出并重新打开 ChatGPT/Codex Desktop 后即可选择新模型；默认模型保持不变。"
 }
 
 enable_deepseek() {
@@ -471,6 +674,12 @@ status() {
   info "forced_login_method = $(config_get forced_login_method)"
   info "providers  = $(provider_names | tr '\n' ' ')"
   info "deepseek API = $(deepseek_provider_value base_url)"
+  local drift
+  drift="$(catalog_missing_slugs)"
+  if [ -n "$drift" ]; then
+    info "目录落后  = 缺少 $(printf '%s\n' "$drift" | wc -l | tr -d ' ') 个官方模型（$(printf '%s' "$drift" | tr '\n' ' ')）"
+    info "            运行 codex-provider sync-models 补齐"
+  fi
   if [ -n "$CODEX_BIN" ]; then
     info "加载的模型（codex debug models）:"
     "$CODEX_BIN" debug models 2>/dev/null | jq -r '.models[].slug' | sed 's/^/  /'
@@ -498,6 +707,12 @@ validate() {
   printf '%s\n' "$models" | jq -e 'any(.models[]; .slug | startswith("deepseek-"))' >/dev/null \
     || die "加载目录中缺少 DeepSeek 模型"
   printf '%s\n' "$models" | jq -r '.models | length as $n | "共 \($n) 个模型:", .[].slug'
+  local drift
+  drift="$(catalog_missing_slugs)"
+  if [ -n "$drift" ]; then
+    info "注意：官方缓存里有目录尚未收录的模型：$(printf '%s' "$drift" | tr '\n' ' ')"
+    info "      运行 codex-provider sync-models 补齐（需要联网与 ChatGPT 登录）。"
+  fi
   info "== codex doctor =="
   "$CODEX_BIN" doctor --summary --no-color 2>&1 | tail -n 20 || true
   info "ChatGPT/DeepSeek 结构校验通过。"
@@ -566,11 +781,12 @@ case "${1:-}" in
   set-model) [ $# -ge 2 ] && set_model "$2" "${3:-}" || { echo "用法: coexist.sh set-model <模型> [provider]"; exit 1; } ;;
   merge) merge ;;
   refresh) refresh ;;
+  sync-models) sync_models "${2:-}" ;;
   backup) backup ;;
   restore) restore "${2:-}" ;;
   validate) validate ;;
   history) history "${2:-all}" ;;
   test-deepseek) test_deepseek "${2:-}" ;;
   keychain-status) keychain_status ;;
-  *) sed -n '2,18p' "$0" ;;
+  *) sed -n '2,21p' "$0" ;;
 esac

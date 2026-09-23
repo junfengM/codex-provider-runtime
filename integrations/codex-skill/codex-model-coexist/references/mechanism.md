@@ -7,7 +7,9 @@
 - `thread/start` and `thread/resume` carry model and provider; the Desktop picker can otherwise
   submit a third-party model with the OpenAI default provider.
 - `model_catalog_json` is a startup snapshot and must be merged with official
-  GPT entries and refreshed after updates.
+  GPT entries and refreshed after updates. `codex-provider sync-models` fetches
+  the account's live official list, rebuilds and re-pins the merged catalog,
+  and leaves the default model unchanged; `--check` only reports drift.
 - Stored thread provider metadata is part of conversation identity. Rewriting
   it can resume a thread through the wrong endpoint.
 - Desktop and phone Remote new chats and reconnects converge on the shared App
