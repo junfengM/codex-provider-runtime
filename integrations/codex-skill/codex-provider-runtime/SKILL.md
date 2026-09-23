@@ -51,9 +51,15 @@ Use:
 
 ```bash
 codex-provider update
+codex-provider sync-models
 codex-provider verify
 codex-provider cleanup
 ```
+
+`update` refreshes the runtime binaries and then attempts one best-effort
+`sync-models` for newly released official models; when that sync cannot reach
+the account it only warns, so re-run `codex-provider sync-models` yourself.
+`sync-models` keeps the default model, `configure` resets it.
 
 Scheduled failures are memoized by the bundled Codex binary and provider patch.
 Do not remove the marker merely to make an unchanged background build retry;

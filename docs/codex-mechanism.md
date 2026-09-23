@@ -19,8 +19,17 @@ DeepSeek entries, the model picker no longer receives official GPT entries.
 Coexist mode merges the local official cache with the custom catalog and points
 the startup override at the merged result.
 
-The merged file is a snapshot. Run `coexist.sh refresh` after Codex updates its
-official model cache.
+The merged file is a snapshot: it holds only the models known when it was
+generated, and the client keeps showing that snapshot after the account gains
+access to a newer model. Two refreshes exist:
+
+- `coexist.sh refresh` rebuilds the merged catalog from the local official
+  cache, without network access;
+- `codex-provider sync-models` briefly unpins the override so the logged-in
+  client can fetch the account's live model list, then rebuilds, validates, and
+  re-pins the merged catalog without changing the default model. `sync-models
+  --check` only reports drift between the local official cache and the pinned
+  catalog.
 
 ## Provider and authentication behavior
 
@@ -138,7 +147,8 @@ resumed DeepSeek thread simply retains its existing provider. See
 
 ## Known limits
 
-- A merged startup catalog does not update until refreshed and the app restarts.
+- A merged startup catalog does not update until refreshed and the app restarts;
+  a newly released official model stays invisible until `sync-models` runs.
 - Cross-provider sidebar visibility is client behavior, not a TOML setting.
 - The desktop model picker does not atomically update `model_provider` and
   `model` on existing threads; use an explicit provider override for validation
