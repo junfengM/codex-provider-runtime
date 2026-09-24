@@ -64,6 +64,16 @@ async fn resume_example(params: ThreadResumeParams) {
 }
 """
 
+THREAD_WITH_PREPARED_RESUME = THREAD.replace(
+    """
+        // Derive a Config using the same logic as new conversation, honoring overrides if provided.
+""",
+    """
+        let clear_reasoning_effort = !has_explicit_model_resume_override
+            && persisted_metadata.is_some();
+""",
+)
+
 
 class PatchSourceTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -109,6 +119,19 @@ class PatchSourceTests(unittest.TestCase):
         self.assertIn(
             "mod process_exec_processor;\nmod provider_route;\nmod projects;",
             parent.read_text(encoding="utf-8"),
+        )
+
+    def test_applies_to_prepared_resume_config_layout(self) -> None:
+        source = self.root / "source"
+        thread = source / "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        thread.write_text(THREAD_WITH_PREPARED_RESUME, encoding="utf-8")
+
+        self.assertEqual(router_manager.patch_source(source, self.patch_asset), "patched")
+        patched = thread.read_text(encoding="utf-8")
+        self.assertIn(router_manager.RESUME_CALL_MARKER, patched)
+        self.assertLess(
+            patched.index(router_manager.RESUME_CALL_MARKER),
+            patched.index("let clear_reasoning_effort"),
         )
 
     def test_upgrades_the_legacy_new_thread_only_patch(self) -> None:

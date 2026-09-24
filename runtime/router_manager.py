@@ -37,7 +37,7 @@ RESUME_CALL_MARKER = "model_provider_for_resume("
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
 RETIRED_GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
-PATCH_NAME = "deepseek-flash-pro-route-resume-and-all-provider-history-v6"
+PATCH_NAME = "deepseek-flash-pro-route-resume-and-all-provider-history-v7"
 LEGACY_SUPPORT_NAMES = {
     f"{RETIRED_GATEWAY_LABEL}.plist",
     "com.dudu.codex-deepseek-router-environment.plist",

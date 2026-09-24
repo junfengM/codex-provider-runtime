@@ -58,7 +58,7 @@ only when same-thread switching is in scope.
 
 ## Current verified baseline
 
-Last verified: 2026-09-10.
+Last verified: 2026-09-24 against Codex `0.155.0-alpha.16.4`.
 
 - Integrate `deepseek-flash` (DeepSeek-V4.1-Flash, image input enabled) and keep
   the retired `deepseek-v4-flash` / `deepseek-v4-pro` names routed because
