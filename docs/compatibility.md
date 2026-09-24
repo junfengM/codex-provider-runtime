@@ -33,18 +33,19 @@ V4-Flash; `deepseek-v4-flash` is still accepted and served by V4.1 Flash. On
 vision enabled) with `auto_review_model_override = deepseek-flash`; routing
 still accepts both retired aliases so historical threads keep working.
 
-On 2026-09-09, the native runtime was rebuilt and activated for Codex Desktop
-`26.901.51231` with bundled Codex CLI `0.153.4` (`rust-v0.153.4`). The source
-patch manager now accepts both the older request-processor module layout and
-the `0.153.4` layout that inserts `mod projects;`, while refusing ambiguous or
-missing anchors.
+On 2026-09-24, the native runtime was rebuilt and activated for Codex Desktop
+`26.917.71314` with bundled Codex CLI `0.155.0-alpha.16.4`
+(`rust-v0.155.0-alpha.16.4`, commit
+`3853cf0c49daadcacaacceb2cbb732f512eaacdb`). The source patch manager accepts
+the older direct resume-config layout and the `0.155` prepared resume-config
+layout while continuing to reject ambiguous or missing anchors.
 
-Validation completed after the Desktop restart:
+Automated validation completed before the required Desktop restart:
 
 - `codex-provider verify` passed the ChatGPT/DeepSeek routing contract;
-- the desktop app-server process loaded
+- the ephemeral app-server process loaded
   `/Users/mjf/.codex/provider-runtime/current/codex`;
-- `codex-provider appserver-smoke deepseek-v4-flash` completed a structured
+- `codex-provider appserver-smoke deepseek-flash` completed a structured
   `commandExecution` and matched the hidden SHA-256 challenge;
 - the routing smoke kept GPT on `openai` and both supported DeepSeek models on
   `deepseek`.

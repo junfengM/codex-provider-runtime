@@ -37,7 +37,7 @@ RESUME_CALL_MARKER = "model_provider_for_resume("
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
 RETIRED_GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
-PATCH_NAME = "deepseek-flash-pro-route-resume-and-all-provider-history-v6"
+PATCH_NAME = "deepseek-flash-pro-route-resume-and-all-provider-history-v7"
 LEGACY_SUPPORT_NAMES = {
     f"{RETIRED_GATEWAY_LABEL}.plist",
     "com.dudu.codex-deepseek-router-environment.plist",
@@ -265,7 +265,8 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
             description="all-provider thread-list default",
         )
 
-    resume_anchor = """        let persisted_metadata = self
+    if RESUME_CALL_MARKER not in thread_text:
+        legacy_resume_anchor = """        let persisted_metadata = self
             .load_and_apply_persisted_resume_metadata(
                 &thread_history,
                 &mut request_overrides,
@@ -275,7 +276,7 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
 
         // Derive a Config using the same logic as new conversation, honoring overrides if provided.
 """
-    resume_replacement = """        let persisted_metadata = self
+        legacy_resume_replacement = """        let persisted_metadata = self
             .load_and_apply_persisted_resume_metadata(
                 &thread_history,
                 &mut request_overrides,
@@ -289,11 +290,36 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
 
         // Derive a Config using the same logic as new conversation, honoring overrides if provided.
 """
-    if RESUME_CALL_MARKER not in thread_text:
-        thread_text = replace_once(
+        prepared_resume_anchor = """        let persisted_metadata = self
+            .load_and_apply_persisted_resume_metadata(
+                &thread_history,
+                &mut request_overrides,
+                &mut typesafe_overrides,
+            )
+            .await;
+
+        let clear_reasoning_effort = !has_explicit_model_resume_override
+"""
+        prepared_resume_replacement = """        let persisted_metadata = self
+            .load_and_apply_persisted_resume_metadata(
+                &thread_history,
+                &mut request_overrides,
+                &mut typesafe_overrides,
+            )
+            .await;
+        typesafe_overrides.model_provider = model_provider_for_resume(
+            typesafe_overrides.model.as_deref(),
+            typesafe_overrides.model_provider.clone(),
+        );
+
+        let clear_reasoning_effort = !has_explicit_model_resume_override
+"""
+        thread_text = replace_one_of(
             thread_text,
-            resume_anchor,
-            resume_replacement,
+            (
+                (legacy_resume_anchor, legacy_resume_replacement),
+                (prepared_resume_anchor, prepared_resume_replacement),
+            ),
             description="resumed-thread provider normalization",
         )
 

@@ -26,6 +26,9 @@
   and refresh the runtime, docs, and operator skills to the 2026-09-10 contract.
 - [x] Reduce the catalog to `deepseek-flash` only (drop `deepseek-v4-pro`) and
   enable image input after an endpoint and Codex `exec -i` vision probe passed.
+- [x] Rebuild and activate the native DeepSeek runtime for Desktop
+  `26.917.71314` / Codex `0.155.0-alpha.16.4`, supporting the prepared
+  resume-config layout and validating a live app-server Flash tool call.
 
 ## Completed validation
 
