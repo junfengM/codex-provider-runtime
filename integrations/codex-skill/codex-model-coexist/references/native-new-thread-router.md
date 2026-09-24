@@ -48,6 +48,16 @@ Require all of the following before activation:
 8. Run a live App Server tool loop against the currently documented endpoint.
 9. Atomically activate only after all checks pass.
 
+An unattended failure is fingerprinted by the official Codex binary and patch,
+so the scheduler does not retry unchanged inputs every 15 minutes. A changed
+binary or patch becomes eligible automatically, while a manual update forces a
+retry. After activation, keep only the active and one rollback release and
+remove source worktrees and Cargo build products.
+
+When reuse is impossible, build with one Cargo job and a memory-bounded release
+profile (LTO disabled, one codegen unit, debug and symbols removed). Keep the
+exact-version, unit-test, and protocol-smoke gates unchanged.
+
 For a repository-driven patch update, unload the scheduled updater and install
 the new manager/asset before building. Reload it only after the new release is
 certified and active; otherwise a still-loaded old updater can race `current`

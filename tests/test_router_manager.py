@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -140,8 +141,8 @@ class PatchSourceTests(unittest.TestCase):
         destination = source / "codex-rs/app-server/src/request_processors/provider_route.rs"
         parent.write_text(
             PARENT.replace(
-                "mod process_exec_processor;\nmod remote_control_processor;",
-                "mod process_exec_processor;\nmod provider_route;\nmod remote_control_processor;",
+                "mod remote_control_processor;",
+                "mod provider_route;\nmod remote_control_processor;",
             ),
             encoding="utf-8",
         )
@@ -295,6 +296,18 @@ class SupportMetadataTests(unittest.TestCase):
         self.assertIn(
             'built_host = bundled_code_mode_host(official_codex)',
             source,
+        )
+
+    def test_source_build_uses_bounded_memory_profile(self) -> None:
+        source = Path(router_manager.__file__).read_text(encoding="utf-8")
+        self.assertIn('build_env["CARGO_BUILD_JOBS"] = "1"', source)
+        self.assertIn('build_env["CARGO_PROFILE_RELEASE_LTO"] = "false"', source)
+        self.assertIn(
+            'build_env["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"] = "1"', source
+        )
+        self.assertIn('build_env["CARGO_PROFILE_RELEASE_DEBUG"] = "none"', source)
+        self.assertIn(
+            'build_env["CARGO_PROFILE_RELEASE_STRIP"] = "symbols"', source
         )
 
 
@@ -456,6 +469,57 @@ class ReleaseReuseTests(unittest.TestCase):
         self.assertIn("find_certified_release", update_block)
         self.assertIn("reuse_release", update_block)
 
+
+class UpdateStateTests(unittest.TestCase):
+    def test_failed_update_marker_is_keyed_without_exposing_secrets(self) -> None:
+        with tempfile.TemporaryDirectory(
+            prefix="router-manager-failure-test-"
+        ) as temporary:
+            root = Path(temporary)
+            official = root / "codex"
+            official.write_text("#!/bin/sh\necho 'codex-cli 1.2.3'\n", encoding="utf-8")
+            official.chmod(0o755)
+            patch = root / "provider_route.rs"
+            patch.write_text("safe patch\n", encoding="utf-8")
+            fingerprint = router_manager.update_fingerprint(official, patch)
+            marker = router_manager.record_failed_update(
+                root, fingerprint, official, router_manager.RouterError("anchor changed")
+            )
+            self.assertEqual(marker, router_manager.failed_update_path(root, fingerprint))
+            payload = marker.read_text(encoding="utf-8")
+            self.assertIn('"codex_version": "1.2.3"', payload)
+            self.assertIn("anchor changed", payload)
+            router_manager.clear_failed_update(root, fingerprint)
+            self.assertFalse(marker.exists())
+
+    def test_prune_keeps_active_and_one_rollback_and_clears_build_state(self) -> None:
+        with tempfile.TemporaryDirectory(
+            prefix="router-manager-prune-test-"
+        ) as temporary:
+            root = Path(temporary)
+            releases = root / "releases"
+            releases.mkdir()
+            old = releases / "old"
+            active = releases / "active"
+            newest = releases / "newest"
+            for index, release in enumerate((old, active, newest), start=1):
+                release.mkdir()
+                (release / "codex").write_text("binary", encoding="utf-8")
+                os.utime(release, (index, index))
+            (root / "current").symlink_to(Path("releases") / active.name)
+            (root / "builds" / "failed" / "source").mkdir(parents=True)
+            (root / "cache" / "cargo-target" / "release").mkdir(parents=True)
+
+            removed = router_manager.prune_runtime(root, keep_releases=2)
+
+            self.assertFalse(old.exists())
+            self.assertTrue(active.exists())
+            self.assertTrue(newest.exists())
+            self.assertFalse((root / "builds" / "failed").exists())
+            self.assertFalse((root / "cache" / "cargo-target").exists())
+            self.assertEqual(
+                removed, {"releases": 1, "builds": 1, "cargo_targets": 1}
+            )
 
 if __name__ == "__main__":
     unittest.main()

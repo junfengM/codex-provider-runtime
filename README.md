@@ -117,19 +117,36 @@ cd codex-provider-runtime
 cd <仓库目录>
 git pull
 ./bin/codex-provider update        # 部署管理器/补丁并激活；同源码 tag 时秒级复用，不重新编译
-./bin/codex-provider configure     # 刷新模型目录（update 不会动目录）
+./bin/codex-provider sync-models   # 用当前账号的官方清单补齐新模型（update 会顺带尝试一次）
 ./bin/codex-provider skill-install # 同步两个 skill（含共享目录副本）
 # 完全退出并重新打开 ChatGPT/Codex Desktop
 ./bin/codex-provider doctor        # 可选：结构 + 路由检查；加 --live 会发一次真实请求
 ```
 
-`update` 只更新运行时二进制，`configure` 才更新模型目录，两者都要跑。新机器直接用
-`install` 即可，它内部已经包含 `configure`、构建与激活。
+`update` 更新运行时二进制并在激活后尽力执行一次 `sync-models`（离线或未登录时只打印
+警告，不影响已完成的激活）。`sync-models` 会短暂解除 `model_catalog_json`、用当前
+ChatGPT 登录拉取账号的实时模型清单、重建合并目录再写回，并保持你的默认模型不变；
+任何失败或 Ctrl-C 都会回滚 `config.toml`。新机器直接用 `install`，它内部已经包含
+`configure`、构建与激活。
 
 三样东西不在仓库里，必须在每台机器本机处理：`/Applications/ChatGPT.app` 本体、
 Keychain 里的 DeepSeek API Key（`keychain-set`，不会跨机同步），以及可选的
 `~/.local/bin/codex` 转发 shim（用于 Open Design + Local DeepSeek，源文件在共享 skills
 目录）。
+
+## 官方上了新模型，为什么下拉框里没有
+
+`model_catalog_json` 是启动快照：一旦固定，客户端就不再使用账号的实时清单，所以新发布的
+官方模型（例如某个新 GPT 版本）不会自动出现，即使账号已经有权限。补齐只需要一条命令：
+
+```bash
+./bin/codex-provider sync-models          # 拉取实时清单、重建并校验合并目录
+./bin/codex-provider sync-models --check  # 只做离线漂移检测，落后时返回 1
+```
+
+输出里的 `新增模型:` 会列出这次补进来的 slug，例如 `gpt-6-astra gpt-6-sol gpt-6-luna`。
+执行后完全退出并重新打开 ChatGPT/Codex Desktop 即可在模型选择器里看到。`status` 与
+`doctor` 在目录落后时也会给出提示，但不会把这种情况判成路由故障。
 
 ## 常用命令
 
@@ -138,6 +155,9 @@ codex-provider status
 codex-provider doctor
 codex-provider doctor --live
 codex-provider update
+codex-provider sync-models
+codex-provider sync-models --check
+codex-provider cleanup
 codex-provider verify
 codex-provider test-deepseek deepseek-flash
 codex-provider keychain-status
@@ -150,10 +170,15 @@ codex-provider uninstall
 ```
 
 - `disable`：保留安装与凭据，下一次启动回退官方后端；
+- `cleanup`：保留当前 release 和一个回退 release，移除源码 worktree 与 Cargo 构建产物；
 - `enable`：解除禁用标记，但仍要求版本完全匹配；
 - `update`：Desktop 更新后重新认证并激活；当公开源码 tag 与补丁资产未变时，直接复用已
   验证的自编译二进制（仍会重跑 code-mode-host 检查和协议 smoke），需要强制源码重建时用
-  `update --no-reuse`；
+  `update --no-reuse`；激活后会尽力执行一次 `sync-models`；
+- `sync-models [--check]`：用当前账号的实时官方清单补齐新模型并保留默认模型；`--check`
+  只做离线漂移检测；
+- `configure`：重建合并目录并把默认模型重置为官方首个模型、推理强度设为 `medium`，
+  适合首次安装或想重设默认值的情况；
 - `uninstall`：卸载 LaunchAgent 和环境入口，保留 releases、配置与 Keychain；
 - `test-deepseek [model]`：对 `deepseek-flash`（或退役名的兼容路由）跑一次本地 CLI 真实
   结构化工具调用闭环；
@@ -173,6 +198,15 @@ codex-provider uninstall
 从仓库执行 `codex-provider update` 时会先暂停已加载的定时更新器并同步新版补丁资产，
 构建和验证结束后再重新加载。这样旧更新器无法在新 release 激活与支持文件同步之间把
 `current` 竞态切回旧补丁；后台定时更新仍直接使用已安装、已同步的管理器。
+
+后台更新失败后会按“Codex 二进制 + Provider 补丁”记录退避标记；相同输入不再每 15 分钟
+重复下载、打补丁或编译，只有 Codex 或补丁发生变化时才自动重试。手动执行 `update` 仍会
+强制重试。每次成功激活后，运行时只保留当前 release 和一个回退 release，并清除源码
+worktree 与 Cargo 构建产物，避免长期累积多 GB 缓存。
+
+必须从源码构建时，运行时固定使用单 Cargo job，并关闭 release LTO、单 codegen unit、
+移除调试信息和符号，以控制 Desktop Mac 上的编译与链接内存峰值。最终二进制仍须通过
+版本校验、路由单元测试和完整 app-server 协议 smoke 才能激活。
 
 若客户端版本与自定义发布不一致、精确标签尚未发布、源码结构改变或构建失败，稳定启动器
 会使用 ChatGPT.app 内置官方后端。它不会让旧自定义二进制冒充新版本。此时 GPT 继续可用，

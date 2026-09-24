@@ -81,6 +81,9 @@ human-reviewed patch update passes the same contract.
 The updater rebuilds only the version-coupled app-server patch after a Desktop
 upgrade. Model-catalog refresh is separate and validates the current official
 DeepSeek Flash Codex contract before activation.
+Because the merged catalog is a startup snapshot, newly released GPT models
+need `codex-provider sync-models`, which refreshes the live official list,
+rebuilds and validates the merged catalog, and leaves the default model alone.
 
 Repository-driven install/update first unloads the scheduled updater, copies
 the new manager and patch asset, builds and certifies the release, and only then

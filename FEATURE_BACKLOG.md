@@ -29,6 +29,10 @@
 - [x] Rebuild and activate the native DeepSeek runtime for Desktop
   `26.917.71314` / Codex `0.155.0-alpha.16.4`, supporting the prepared
   resume-config layout and validating a live app-server Flash tool call.
+- [x] Add `codex-provider sync-models` so a pinned merged catalog picks up newly
+  released official models (for example the GPT-6 family) in one command on any
+  machine, with an offline `--check` drift report, a lock, and automatic
+  `config.toml` rollback on failure or interrupt.
 
 ## Completed validation
 

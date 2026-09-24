@@ -96,7 +96,13 @@ For an authorized configuration or upgrade:
 ./bin/codex-provider configure
 ./bin/codex-provider update
 ./bin/codex-provider verify
+./bin/codex-provider cleanup
 ```
+
+The scheduled updater memoizes an unchanged failed Codex-binary/provider-patch
+combination instead of rebuilding every 15 minutes. Successful activation and
+manual `cleanup` retain the current and one rollback release while removing
+version-coupled source and Cargo build state.
 
 Use `doctor --live` or `appserver-smoke` only when one paid ephemeral DeepSeek
 request is appropriate. The app-server smoke must observe provider `deepseek`,
@@ -115,8 +121,12 @@ when available. Elsewhere use an environment key. Preserve the global ChatGPT
 login and do not set a global DeepSeek provider merely to make the picker work.
 
 Merge the official GPT catalog with the currently validated DeepSeek entries.
-Refresh after Codex changes its official catalog. Model entries describe
-capabilities; the native start/resume router supplies provider identity.
+The pinned merged catalog is a startup snapshot and never learns about a newly
+released official model on its own, even when the account already has access.
+Run `./bin/codex-provider sync-models` after a Desktop upgrade or an upstream
+model announcement, then fully restart Desktop; `sync-models --check` reports
+offline drift. Model entries describe capabilities; the native start/resume
+router supplies provider identity.
 
 ## History and provider boundaries
 

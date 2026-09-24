@@ -27,6 +27,14 @@ class CliTests(unittest.TestCase):
         self.assertIn('if ! manager_run smoke', verify_case)
         self.assertIn('exit "$verify_failed"', verify_case)
 
+    def test_sync_models_is_dispatched_and_chained_after_update(self) -> None:
+        script = CLI.read_text(encoding="utf-8")
+        sync_case = script.split("    sync-models)\n", 1)[1].split("        ;;", 1)[0]
+        self.assertIn('bash "$config_tool" sync-models', sync_case)
+        update_case = script.split("    update)\n", 1)[1].split("        ;;", 1)[0]
+        self.assertIn('bash "$config_tool" sync-models', update_case)
+        self.assertIn("Re-run: codex-provider sync-models", update_case)
+
     def test_skill_install_updates_both_living_skills_with_backups(self) -> None:
         script = CLI.read_text(encoding="utf-8")
         skill_case = script.split("    skill-install)\n", 1)[1].split("        ;;", 1)[0]
@@ -55,6 +63,8 @@ class CliTests(unittest.TestCase):
             "install",
             "doctor",
             "update",
+            "sync-models",
+            "cleanup",
             "disable",
             "uninstall",
             "test-deepseek",
