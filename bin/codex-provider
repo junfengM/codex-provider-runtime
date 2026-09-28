@@ -24,6 +24,14 @@ manager_run() {
         "$@"
 }
 
+manager_support_run() {
+    /usr/bin/python3 "$script_dir/codex-provider-support.py" \
+        "$manager" \
+        "$install_root" \
+        "$official_codex" \
+        "$@"
+}
+
 usage() {
     cat <<'EOF'
 codex-provider - manage the Codex multi-provider local runtime
@@ -191,9 +199,9 @@ case "${1:-help}" in
         update_status=0
         activate_status=0
         if [ -n "$distribution" ]; then
-            if manager_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
+            if manager_support_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
         else
-            if manager_run install-support; then :; else update_status=$?; fi
+            if manager_support_run install-support; then :; else update_status=$?; fi
         fi
         if [ "$update_status" -eq 0 ]; then
             if [ -n "$distribution" ]; then
@@ -206,9 +214,9 @@ case "${1:-help}" in
             if manager_run smoke --binary "$install_root/current/codex"; then :; else update_status=$?; fi
         fi
         if [ -n "$distribution" ]; then
-            if manager_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
+            if manager_support_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
         else
-            if manager_run activate-support; then :; else activate_status=$?; fi
+            if manager_support_run activate-support; then :; else activate_status=$?; fi
         fi
         if [ "$update_status" -ne 0 ]; then
             exit "$update_status"
@@ -247,9 +255,9 @@ case "${1:-help}" in
         update_status=0
         activate_status=0
         if [ -n "$distribution" ]; then
-            if manager_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
+            if manager_support_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
         else
-            if manager_run install-support; then :; else update_status=$?; fi
+            if manager_support_run install-support; then :; else update_status=$?; fi
         fi
         if [ "$update_status" -eq 0 ]; then
             if [ "$no_reuse" -eq 1 ]; then
@@ -264,9 +272,9 @@ case "${1:-help}" in
             if manager_run smoke --binary "$install_root/current/codex"; then :; else update_status=$?; fi
         fi
         if [ -n "$distribution" ]; then
-            if manager_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
+            if manager_support_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
         else
-            if manager_run activate-support; then :; else activate_status=$?; fi
+            if manager_support_run activate-support; then :; else activate_status=$?; fi
         fi
         if [ "$update_status" -ne 0 ]; then
             exit "$update_status"
