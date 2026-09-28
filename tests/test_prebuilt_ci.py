@@ -53,6 +53,23 @@ def smoke_manifest() -> dict:
 
 
 class ReleaseSelectionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        environment = mock.patch.dict(
+            os.environ,
+            {
+                "GITHUB_REPOSITORY": prebuilt_ci.REPOSITORY,
+                "GITHUB_REF": "refs/heads/main",
+            },
+        )
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_plan_rejects_non_main_refs(self) -> None:
+        with mock.patch.dict(
+            os.environ, {"GITHUB_REF": "refs/pull/1/merge"}
+        ), self.assertRaisesRegex(prebuilt_ci.PrebuiltCIError, "refs/heads/main"):
+            prebuilt_ci.plan("schedule", "")
+
     def test_latest_scan_selects_first_recent_rust_release_only(self) -> None:
         page = [
             release("rusty-v8-v150.4.0"),
