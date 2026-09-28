@@ -4,10 +4,11 @@ The standalone CLI owns the lifecycle:
 
 ```bash
 codex-provider prerequisites
+codex-provider prerequisites --distribution prebuilt-only
 codex-provider keychain-set
 codex-provider configure
 codex-provider sync-models
-codex-provider install
+codex-provider install --distribution prebuilt-only
 codex-provider status
 codex-provider doctor [--live]
 codex-provider update
@@ -18,18 +19,34 @@ codex-provider enable
 codex-provider uninstall
 ```
 
-`install` configures coexistence, builds the exact matching official Codex tag,
-tests the native patch, installs generic LaunchAgents, and activates the stable
-launcher. It may download source and compile Rust, so use it only for an
-explicit install request.
+`install` configures coexistence, checks the exact matching Codex release,
+installs generic LaunchAgents, and activates the stable launcher. Its default
+`auto` policy reuses a local same-recipe release, then verifies an attested
+prebuild, then falls back to a source build. On a Mac without rustup/Cargo,
+choose `--distribution prebuilt-only`; it never compiles and the policy persists
+for scheduled updates. `--distribution source` skips prebuilt downloads.
 
-An unattended failure writes a fingerprinted backoff marker. Scheduled runs
-skip the unchanged Codex-binary/provider-patch combination; a changed binary or
-patch retries automatically, and manual `update` always forces a retry. After a
-successful activation, bounded retention keeps the current and one rollback
-release and removes source worktrees and Cargo products. `cleanup` applies the
-same policy immediately without touching configuration, credentials, or
-conversations.
+An unattended source-build failure writes a fingerprinted memo tied to the
+binary and build recipe, preventing repeated cold compiles. Missing prebuilds,
+network failures, and local attestation/smoke failures use a separate short
+retry window, so the next scheduled run can see a newly published release.
+Manual `update` retries immediately. If an update fails, support LaunchAgents
+are restored and the old release remains; a version mismatch makes the stable
+launcher use the bundled official backend.
+
+Prebuilt archives contain only patched `codex` and its manifest. Every machine
+uses its own same-version official `codex-code-mode-host`. `gh attestation verify --bundle`
+binds the archive to this repository, its signer workflow, and
+`refs/heads/main` before extraction. The manifest checks source tag commit,
+patch/recipe digests, checksum, architecture, and the macOS 13.0 app floor.
+Scheduled release discovery runs every six hours and only selects the newest
+upstream CLI release that has both arm64 CLI and host assets; Desktop alpha
+releases may need an exact `workflow_dispatch` request.
+
+After a successful activation, bounded retention keeps the current and one
+rollback release and removes source worktrees. The Cargo target cache stays
+available up to a configurable 24 GiB default; `cleanup` clears it explicitly
+without touching configuration, credentials, or conversations.
 
 Source builds intentionally use one Cargo job with release LTO disabled, one
 codegen unit, and debug/symbol data removed to bound compile and link memory on

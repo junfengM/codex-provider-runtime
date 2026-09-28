@@ -71,8 +71,10 @@ The custom binary is a function of the public source commit and the patch asset,
 so a certified release may be reused when the bundled client digest moves but
 that pair does not. Reuse re-verifies the cached checksum and reported version,
 runs the code-mode-host check and protocol smoke against the cached binary, and
-records the new official digest. An ambiguous source commit, a failed smoke, or
-`--no-reuse` falls back to the source build.
+records the new official digest. An ambiguous source commit or failed smoke
+falls back to a source build. `--no-reuse` skips local cross-digest reuse but
+still follows the selected distribution policy; use `--distribution source` to
+skip prebuilt downloads.
 
 Structural upstream changes are a supported failure state. The updater must
 stop and retain evidence; the launcher must use the official backend until a
@@ -89,6 +91,24 @@ Repository-driven install/update first unloads the scheduled updater, copies
 the new manager and patch asset, builds and certifies the release, and only then
 reloads support. This ordering prevents an updater holding a superseded patch
 asset from racing the final `current` symlink back to an older release.
+
+The machine-level `build-policy.json` stores `auto`, `prebuilt-only`, or
+`source`; both the updater LaunchAgent and launcher-triggered retries inherit
+that setting. `auto` prefers a same-recipe local binary, then a GitHub Release
+whose archive attestation is verified against this repository's main workflow,
+then a source build. `prebuilt-only` never invokes Cargo. A prebuilt archive
+contains only `codex` and its manifest; each Mac keeps its local official host.
+The manifest binds the upstream peeled tag commit, patch and recipe digests,
+binary checksum, arm64 target, and the macOS 13.0 floor.
+
+Source failures are memoized by runtime inputs, while missing or invalid
+prebuilts use a separate short retry window. This lets scheduled runs discover
+a later publication without repeating an unchanged cold source build. If an
+update fails, support agents are restored; the stable launcher keeps a
+version-matched current release or uses the bundled official backend while it
+waits for a matching build. Successful source updates retain the Cargo target
+until its configurable 24 GiB default cap is reached; explicit cleanup clears
+it.
 
 ## Native protocol
 

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
+import subprocess
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -309,6 +312,74 @@ class SupportMetadataTests(unittest.TestCase):
         self.assertIn(
             'build_env["CARGO_PROFILE_RELEASE_STRIP"] = "symbols"', source
         )
+        self.assertIn('build_env["CARGO_NET_GIT_FETCH_WITH_CLI"] = "true"', source)
+        self.assertIn('build_env["MACOSX_DEPLOYMENT_TARGET"] = "13.0"', source)
+        self.assertIn('"test",\n            "--release",', source)
+
+    def test_install_support_persists_policy_and_copies_matching_recipe(self) -> None:
+        project_root = Path(router_manager.__file__).resolve().parent
+        with tempfile.TemporaryDirectory(prefix="router-support-policy-test-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            install_root = root / "provider-runtime"
+            official = root / "codex"
+            with mock.patch.object(Path, "home", return_value=home), mock.patch.object(
+                router_manager, "launchctl_allow_failure"
+            ):
+                router_manager.install_support(
+                    project_root, install_root, official, "prebuilt-only"
+                )
+            self.assertEqual(
+                router_manager.load_distribution_policy(install_root), "prebuilt-only"
+            )
+            installed_lib = install_root / "lib"
+            self.assertEqual(
+                router_manager.build_recipe_sha256(project_root),
+                router_manager.build_recipe_sha256(installed_lib),
+            )
+            agents = home / "Library" / "LaunchAgents"
+            updater = plistlib.loads(
+                (agents / f"{router_manager.UPDATER_LABEL}.plist").read_bytes()
+            )
+            self.assertIn("--distribution", updater["ProgramArguments"])
+            self.assertIn("prebuilt-only", updater["ProgramArguments"])
+
+    def test_prebuilt_only_prerequisites_do_not_require_rust_toolchain(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-prebuilt-prereq-test-") as temporary:
+            root = Path(temporary)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            for command_name in ("dirname", "git", "gh", "jq", "sqlite3", "rg"):
+                destination = fake_bin / command_name
+                body = (
+                    '#!/bin/sh\nexec /usr/bin/dirname "$@"\n'
+                    if command_name == "dirname"
+                    else "#!/bin/sh\nexit 0\n"
+                )
+                destination.write_text(body, encoding="utf-8")
+                destination.chmod(0o755)
+            official = root / "codex"
+            official.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            official.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = os.fspath(fake_bin)
+            env["CODEX_OFFICIAL_CLI_PATH"] = os.fspath(official)
+            result = subprocess.run(
+                [
+                    os.fspath(PROJECT_ROOT / "bin" / "codex-provider"),
+                    "prerequisites",
+                    "--distribution",
+                    "prebuilt-only",
+                ],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("cargo", result.stdout)
+            self.assertNotIn("rustup", result.stdout)
 
 
 class ReleaseReuseTests(unittest.TestCase):
@@ -342,6 +413,7 @@ class ReleaseReuseTests(unittest.TestCase):
         commit: str = COMMIT,
         binary_version: str = "0.153.4",
         built_at: str = "2026-09-08T11:34:58+00:00",
+        recipe_digest: str | None = None,
     ) -> Path:
         release = install_root / "releases" / name
         binary = self.write_executable(
@@ -355,6 +427,9 @@ class ReleaseReuseTests(unittest.TestCase):
             "official_binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
             "official_sha256": "a" * 64,
             "patch_sha256": patch_digest,
+            "recipe_sha256": recipe_digest or router_manager.build_recipe_sha256(
+                Path(router_manager.__file__).resolve().parent
+            ),
             "custom_sha256": router_manager.sha256(binary),
             "code_mode_host_sha256": "b" * 64,
             "code_mode_host_source": "bundled-with-desktop",
@@ -446,7 +521,8 @@ class ReleaseReuseTests(unittest.TestCase):
             official_digest = router_manager.sha256(official)
             self.assertEqual(
                 release.name,
-                f"0.153.4-{self.COMMIT[:12]}-{official_digest[:12]}-{digest[:12]}",
+                f"0.153.4-{self.COMMIT[:12]}-{official_digest[:12]}-{digest[:12]}-"
+                f"{router_manager.build_recipe_sha256(Path(router_manager.__file__).resolve().parent)[:12]}",
             )
             manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["official_sha256"], official_digest)
@@ -463,11 +539,50 @@ class ReleaseReuseTests(unittest.TestCase):
                 release.resolve(),
             )
 
-    def test_no_reuse_flag_forces_a_source_build(self) -> None:
-        source = Path(router_manager.__file__).read_text(encoding="utf-8")
-        update_block = source.split('if allow_reuse:', 1)[1].split("ensure_source_checkout", 1)[0]
-        self.assertIn("find_certified_release", update_block)
-        self.assertIn("reuse_release", update_block)
+    def test_no_reuse_skips_cached_binary_carryover_but_keeps_auto_distribution(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-no-reuse-test-") as temporary:
+            root = Path(temporary)
+            install_root = root / "install"
+            official = self.fake_client(root)
+            patch_asset = self.patch_asset()
+            result_path = root / "new-release"
+            with mock.patch.object(
+                router_manager,
+                "build_release",
+                return_value=result_path,
+            ) as build:
+                result = router_manager.main(
+                    [
+                        "--install-root",
+                        str(install_root),
+                        "--official-codex",
+                        str(official),
+                        "update",
+                        "--no-reuse",
+                    ]
+                )
+            self.assertEqual(result, 0)
+            self.assertFalse(build.call_args.kwargs["allow_reuse"])
+            self.assertEqual(build.call_args.kwargs["distribution"], "auto")
+            self.assertTrue(build.call_args.kwargs["allow_prebuilt"])
+
+    def test_legacy_release_without_recipe_is_not_reused_for_current_recipe(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-legacy-reuse-test-") as temporary:
+            install_root = Path(temporary)
+            digest = router_manager.sha256(self.patch_asset())
+            legacy = self.write_release(install_root, "0.153.4-legacy", digest)
+            manifest_path = legacy / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest.pop("recipe_sha256")
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            current_recipe = router_manager.build_recipe_sha256(
+                Path(router_manager.__file__).resolve().parent
+            )
+            self.assertIsNone(
+                router_manager.find_certified_release(
+                    install_root, "0.153.4", digest, recipe_digest=current_recipe
+                )
+            )
 
 
 class UpdateStateTests(unittest.TestCase):
@@ -491,6 +606,58 @@ class UpdateStateTests(unittest.TestCase):
             self.assertIn("anchor changed", payload)
             router_manager.clear_failed_update(root, fingerprint)
             self.assertFalse(marker.exists())
+
+    def test_prebuilt_lookup_has_a_short_retry_window(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-prebuilt-backoff-test-") as temporary:
+            root = Path(temporary)
+            fingerprint = "b" * 64
+            self.assertTrue(router_manager.prebuilt_check_is_due(root, fingerprint, now=2000))
+            marker = router_manager.record_prebuilt_check(root, fingerprint)
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+            attempted_at = payload["attempted_at_epoch"]
+            self.assertFalse(
+                router_manager.prebuilt_check_is_due(
+                    root, fingerprint, now=attempted_at + router_manager.PREBUILT_RETRY_SECONDS - 1
+                )
+            )
+            self.assertTrue(
+                router_manager.prebuilt_check_is_due(
+                    root, fingerprint, now=attempted_at + router_manager.PREBUILT_RETRY_SECONDS
+                )
+            )
+            router_manager.clear_prebuilt_check(root, fingerprint)
+            self.assertFalse(marker.exists())
+
+    def test_prebuilt_only_mode_does_not_memoize_source_failure(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-prebuilt-only-test-") as temporary:
+            root = Path(temporary)
+            official = root / "codex"
+            official.write_text("#!/bin/sh\necho 'codex-cli 1.2.3'\n", encoding="utf-8")
+            official.chmod(0o755)
+            fingerprint = router_manager.update_fingerprint(
+                official, Path(router_manager.__file__).resolve().parent / "patches" / "provider_route.rs"
+            )
+            with mock.patch.object(
+                router_manager,
+                "build_prebuilt_release",
+                side_effect=router_manager.RouterError("attested binary failed protocol smoke"),
+            ) as prebuilt:
+                result = router_manager.main(
+                    [
+                        "--install-root",
+                        str(root / "install"),
+                        "--official-codex",
+                        str(official),
+                        "update",
+                        "--non-interactive",
+                        "--distribution",
+                        "prebuilt-only",
+                    ]
+                )
+            self.assertEqual(result, 0)
+            prebuilt.assert_called_once()
+            self.assertFalse(router_manager.failed_update_path(root / "install", fingerprint).exists())
+            self.assertTrue(router_manager.prebuilt_check_path(root / "install", fingerprint).is_file())
 
     def test_prune_keeps_active_and_one_rollback_and_clears_build_state(self) -> None:
         with tempfile.TemporaryDirectory(
@@ -516,10 +683,27 @@ class UpdateStateTests(unittest.TestCase):
             self.assertTrue(active.exists())
             self.assertTrue(newest.exists())
             self.assertFalse((root / "builds" / "failed").exists())
-            self.assertFalse((root / "cache" / "cargo-target").exists())
+            self.assertTrue((root / "cache" / "cargo-target").exists())
             self.assertEqual(
-                removed, {"releases": 1, "builds": 1, "cargo_targets": 1}
+                removed, {"releases": 1, "builds": 1, "cargo_targets": 0}
             )
+            cleared = router_manager.prune_runtime(
+                root, keep_releases=2, clear_cargo_target=True
+            )
+            self.assertFalse((root / "cache" / "cargo-target").exists())
+            self.assertEqual(cleared["cargo_targets"], 1)
+
+    def test_success_cleanup_keeps_cargo_target_until_size_limit(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="router-cargo-cache-test-") as temporary:
+            root = Path(temporary)
+            target = root / "cache" / "cargo-target"
+            target.mkdir(parents=True)
+            oversized = target / "oversized.cache"
+            with oversized.open("wb") as handle:
+                handle.truncate(router_manager.cargo_target_max_bytes() + 1)
+            removed = router_manager.prune_runtime(root)
+            self.assertFalse(target.exists())
+            self.assertEqual(removed["cargo_targets"], 1)
 
 if __name__ == "__main__":
     unittest.main()

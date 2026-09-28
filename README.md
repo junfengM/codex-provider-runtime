@@ -64,17 +64,27 @@ codex-auto-review → deepseek-flash（low effort）
 
 ## 快速开始
 
-前置条件：macOS、`/Applications/ChatGPT.app`、Git、rustup/Cargo、`jq`、`sqlite3`、
-`ripgrep`，以及可访问官方 `openai/codex` 仓库。
+默认 `auto` 模式需要 macOS、`/Applications/ChatGPT.app`、Git、GitHub CLI、rustup/Cargo、
+`jq`、`sqlite3`、ripgrep，以及可访问官方 `openai/codex` 仓库。它先复用本机同 recipe 的
+已认证 release，再尝试 GitHub 预编译，最后才从源码构建。没有 Rust 工具链的新 Mac 可选
+`prebuilt-only`，此模式只下载、验证和运行，不会调用 Cargo。
 
 ```bash
 git clone https://github.com/junfengM/codex-provider-runtime.git
 cd codex-provider-runtime
 
-./bin/codex-provider prerequisites
+./bin/codex-provider prerequisites --distribution prebuilt-only # 无 rustup/Cargo 的设备
 ./bin/codex-provider keychain-set
-./bin/codex-provider install
+./bin/codex-provider install --distribution prebuilt-only
 ```
+
+本机如果已安装 rustup/Cargo 并希望在预编译暂不可用时回退源码构建，使用默认 `auto`：
+`./bin/codex-provider prerequisites && ./bin/codex-provider install`。
+
+`install`/`update --distribution auto|prebuilt-only|source` 会把选择保存到本机
+`~/.codex/provider-runtime/build-policy.json`；LaunchAgent 和启动器后台更新也遵守这个策略。
+`auto` 是默认值；`prebuilt-only` 永不源码编译；`source` 跳过预编译并使用本机 Rust 工具链。
+再次传入 `--distribution` 即可切换。
 
 `keychain-set` 必须在你能看到的 macOS Terminal 中执行：它会隐藏输入，并把 API Key
 保存到 macOS Keychain，不会写进仓库、配置文件、日志或聊天记录。不要把 API Key
@@ -116,7 +126,7 @@ cd codex-provider-runtime
 ```bash
 cd <仓库目录>
 git pull
-./bin/codex-provider update        # 部署管理器/补丁并激活；同源码 tag 时秒级复用，不重新编译
+./bin/codex-provider update        # 部署管理器/补丁并按已保存的发行策略更新
 ./bin/codex-provider sync-models   # 用当前账号的官方清单补齐新模型（update 会顺带尝试一次）
 ./bin/codex-provider skill-install # 同步两个 skill（含共享目录副本）
 # 完全退出并重新打开 ChatGPT/Codex Desktop
@@ -173,8 +183,9 @@ codex-provider uninstall
 - `cleanup`：保留当前 release 和一个回退 release，移除源码 worktree 与 Cargo 构建产物；
 - `enable`：解除禁用标记，但仍要求版本完全匹配；
 - `update`：Desktop 更新后重新认证并激活；当公开源码 tag 与补丁资产未变时，直接复用已
-  验证的自编译二进制（仍会重跑 code-mode-host 检查和协议 smoke），需要强制源码重建时用
-  `update --no-reuse`；激活后会尽力执行一次 `sync-models`；
+  验证的二进制（仍会重跑 code-mode-host 检查和协议 smoke）；用
+  `update --distribution source` 或 `update --distribution prebuilt-only` 指定来源；激活后会尽力
+  执行一次 `sync-models`；
 - `sync-models [--check]`：用当前账号的实时官方清单补齐新模型并保留默认模型；`--check`
   只做离线漂移检测；
 - `configure`：重建合并目录并把默认模型重置为官方首个模型、推理强度设为 `medium`，
@@ -199,10 +210,27 @@ codex-provider uninstall
 构建和验证结束后再重新加载。这样旧更新器无法在新 release 激活与支持文件同步之间把
 `current` 竞态切回旧补丁；后台定时更新仍直接使用已安装、已同步的管理器。
 
-后台更新失败后会按“Codex 二进制 + Provider 补丁”记录退避标记；相同输入不再每 15 分钟
-重复下载、打补丁或编译，只有 Codex 或补丁发生变化时才自动重试。手动执行 `update` 仍会
-强制重试。每次成功激活后，运行时只保留当前 release 和一个回退 release，并清除源码
-worktree 与 Cargo 构建产物，避免长期累积多 GB 缓存。
+后台源码构建失败后，会按“Codex 二进制 + Provider patch + 构建 recipe”记录失败指纹，
+相同输入不会每 15 分钟重复冷编译。预编译查询另有 10 分钟短退避，因此后续定时运行仍会
+检查后来发布的产物；缺少 release、断网或本机验签失败不会永久屏蔽预编译重试。手动执行
+`update` 会立即重试。失败后支持 LaunchAgent 会恢复加载，当前有效 release 保留；如果它不
+匹配当前 Desktop，稳定启动器会继续使用官方 Codex，直到下次更新成功。
+
+预编译只提供 patched `codex` 和 manifest；host 始终取自每台 Mac 本地 ChatGPT.app 的同版本
+`codex-code-mode-host`。下载使用公开 GitHub Release URL，不要求个人 GitHub 登录；安装端用
+`gh attestation verify --bundle` 绑定本仓库、签名 workflow 和 `refs/heads/main` 后，才解包并
+执行二进制。manifest 同时核对上游精确 source tag、patch/recipe digest、架构、二进制摘要和
+macOS 13.0 最低系统版本。
+
+GitHub Actions 在 main 发布变更后、每 6 小时和手动指定版本时构建。定时发现只检查官方
+Codex 最近发布且同时带 arm64 CLI 与 code-mode-host 资产的最新候选，一次最多构建一个版本；
+这覆盖官方 CLI Release，不保证与 ChatGPT Desktop alpha 的版本同步。Desktop alpha 不在自动
+候选中时，可通过 `workflow_dispatch` 精确请求版本。CI 使用独立 Cargo 缓存；本机 source
+`cargo-target` 上限默认为 24 GiB，可通过 `CODEX_PROVIDER_CARGO_CACHE_MAX_GB` 调整。缓存超限
+或执行 `cleanup` 时会被清除，因此缓存能减少重复依赖编译，但不保证所有版本都命中。
+
+每次成功激活后，运行时只保留当前 release 和一个回退 release，并移除源码 worktree；常规
+成功更新会保留 Cargo target 供复用，超过上限时再清除。
 
 必须从源码构建时，运行时固定使用单 Cargo job，并关闭 release LTO、单 codegen unit、
 移除调试信息和符号，以控制 Desktop Mac 上的编译与链接内存峰值。最终二进制仍须通过

@@ -52,21 +52,32 @@ Use:
 
 ```bash
 codex-provider update
+codex-provider update --distribution prebuilt-only
 codex-provider sync-models
 codex-provider verify
 codex-provider cleanup
 ```
 
-`update` refreshes the runtime binaries and then attempts one best-effort
+`update` defaults to `auto`: it reuses a same-recipe local release, downloads a
+GitHub prebuild after verifying its bundle against the main workflow, then
+falls back to a source build. Use `--distribution prebuilt-only` on Macs
+without rustup/Cargo; that choice is saved locally and the LaunchAgent keeps it
+for unattended runs. `--distribution source` skips prebuilt downloads.
+
+An update refreshes the runtime binaries and then attempts one best-effort
 `sync-models` for newly released official models; when that sync cannot reach
 the account it only warns, so re-run `codex-provider sync-models` yourself.
 `sync-models` keeps the default model, `configure` resets it.
 
-Scheduled failures are memoized by the bundled Codex binary and provider patch.
-Do not remove the marker merely to make an unchanged background build retry;
-manual `update` is the explicit force-retry path. A successful activation keeps
-the current and one rollback release and removes version-coupled source/Cargo
-build state. `cleanup` applies that same retention policy on demand.
+Scheduled source-build failures are memoized by the bundled binary and build
+recipe so an unchanged cold compile does not repeat every 15 minutes. Missing
+prebuilts, network errors, and local attestation/smoke failures have a separate
+short retry window; scheduled checks can discover a later release. Manual
+`update` retries immediately. Failed updates restore support agents and leave
+the current release in place; a mismatched release makes the launcher use the
+official bundled backend. Successful updates keep one rollback release and
+retain the local Cargo target up to its configurable 24 GiB default cap;
+`cleanup` clears it on demand.
 
 After a Desktop upgrade, upstream model change, or activated release, fully
 restart Desktop and verify one GPT and one currently supported DeepSeek new
