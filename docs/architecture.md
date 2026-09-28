@@ -87,10 +87,11 @@ Because the merged catalog is a startup snapshot, newly released GPT models
 need `codex-provider sync-models`, which refreshes the live official list,
 rebuilds and validates the merged catalog, and leaves the default model alone.
 
-Repository-driven install/update first unloads the scheduled updater, copies
-the new manager and patch asset, builds and certifies the release, and only then
-reloads support. This ordering prevents an updater holding a superseded patch
-asset from racing the final `current` symlink back to an older release.
+Repository-driven install/update first unloads the scheduled updater and copies
+the new manager and patch asset, then attempts to build and certify the release.
+It restores support after both success and failure. This prevents an updater
+holding a superseded patch asset from racing the final `current` symlink and
+lets scheduled checks retry after a failed update.
 
 The machine-level `build-policy.json` stores `auto`, `prebuilt-only`, or
 `source`; both the updater LaunchAgent and launcher-triggered retries inherit
@@ -100,6 +101,11 @@ then a source build. `prebuilt-only` never invokes Cargo. A prebuilt archive
 contains only `codex` and its manifest; each Mac keeps its local official host.
 The manifest binds the upstream peeled tag commit, patch and recipe digests,
 binary checksum, arm64 target, and the macOS 13.0 floor.
+
+When the launcher starts an asynchronous update, it adds `$HOME/.cargo/bin`,
+`/opt/homebrew/bin`, and `/usr/local/bin` to `PATH` for that manager process
+only, so it can find `gh` to verify prebuilt attestations. The foreground
+custom or official Codex process keeps the `PATH` it inherited from the GUI.
 
 Source failures are memoized by runtime inputs, while missing or invalid
 prebuilts use a separate short retry window. This lets scheduled runs discover
