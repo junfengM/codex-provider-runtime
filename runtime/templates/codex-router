@@ -30,7 +30,8 @@ if [ ! -e "$disabled_marker" ] && [ -n "$official_version" ] && [ "$official_ver
 fi
 
 if [ ! -e "$disabled_marker" ] && { [ -x "$manager" ] || [ -r "$manager" ]; }; then
-    /usr/bin/python3 "$manager" \
+    PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}" \
+        /usr/bin/python3 "$manager" \
         --install-root "$router_root" \
         --official-codex "$official_codex" \
         update --non-interactive >>"$router_root/logs/updater.log" 2>&1 &
