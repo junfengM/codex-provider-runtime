@@ -102,10 +102,13 @@ contains only `codex` and its manifest; each Mac keeps its local official host.
 The manifest binds the upstream peeled tag commit, patch and recipe digests,
 binary checksum, arm64 target, and the macOS 13.0 floor.
 
-When the launcher starts an asynchronous update, it adds `$HOME/.cargo/bin`,
-`/opt/homebrew/bin`, and `/usr/local/bin` to `PATH` for that manager process
-only, so it can find `gh` to verify prebuilt attestations. The foreground
-custom or official Codex process keeps the `PATH` it inherited from the GUI.
+When the launcher starts an asynchronous update, it adds the saved `gh`
+directory from `bin/gh-bin-dir`, `$HOME/.cargo/bin`, `/opt/homebrew/bin`, and
+`/usr/local/bin` to `PATH` for that manager process only. The CLI records the
+directory of the validated `gh` executable when it installs or activates
+support, so Homebrew installs outside the standard locations can verify
+prebuilt attestations in unattended runs. The foreground custom or official
+Codex process keeps the `PATH` it inherited from the GUI.
 
 Source failures are memoized by runtime inputs, while missing or invalid
 prebuilts use a separate short retry window. This lets scheduled runs discover

@@ -27,9 +27,18 @@ class LauncherEnvironmentTests(unittest.TestCase):
             manager_path_capture = root / "manager-path.txt"
             official_path_capture = root / "official-path.txt"
             official = root / "codex"
+            custom_gh_bin = root / "homebrew-tools" / "bin"
             (home / ".cargo" / "bin").mkdir(parents=True)
             manager.parent.mkdir(parents=True)
+            (runtime / "bin").mkdir(parents=True)
             current.mkdir(parents=True)
+            custom_gh_bin.mkdir(parents=True)
+            gh = custom_gh_bin / "gh"
+            gh.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            gh.chmod(0o755)
+            (runtime / "bin" / "gh-bin-dir").write_text(
+                f"{custom_gh_bin}\n", encoding="utf-8"
+            )
             (current / "manifest.json").write_text(
                 '{"codex_version":"0.1.0"}\n', encoding="utf-8"
             )
@@ -88,6 +97,7 @@ class LauncherEnvironmentTests(unittest.TestCase):
             self.assertEqual(
                 manager_path,
                 [
+                    str(custom_gh_bin),
                     str(home / ".cargo" / "bin"),
                     "/opt/homebrew/bin",
                     "/usr/local/bin",

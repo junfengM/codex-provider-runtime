@@ -30,7 +30,26 @@ if [ ! -e "$disabled_marker" ] && [ -n "$official_version" ] && [ "$official_ver
 fi
 
 if [ ! -e "$disabled_marker" ] && { [ -x "$manager" ] || [ -r "$manager" ]; }; then
-    PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}" \
+    gh_bin_dir=""
+    gh_bin_dir_file="$router_root/bin/gh-bin-dir"
+    if [ -r "$gh_bin_dir_file" ]; then
+        IFS= read -r gh_bin_dir <"$gh_bin_dir_file" || true
+        case "$gh_bin_dir" in
+            /*) ;;
+            *) gh_bin_dir="" ;;
+        esac
+        case "$gh_bin_dir" in
+            *:*|*[![:print:]]*) gh_bin_dir="" ;;
+        esac
+        if [ -n "$gh_bin_dir" ] && [ ! -x "$gh_bin_dir/gh" ]; then
+            gh_bin_dir=""
+        fi
+    fi
+    manager_path="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+    if [ -n "$gh_bin_dir" ]; then
+        manager_path="$gh_bin_dir:$manager_path"
+    fi
+    PATH="$manager_path" \
         /usr/bin/python3 "$manager" \
         --install-root "$router_root" \
         --official-codex "$official_codex" \
