@@ -29,15 +29,18 @@ usage() {
 codex-provider - manage the Codex multi-provider local runtime
 
 Usage:
-  codex-provider prerequisites       Check local build/runtime prerequisites
+  codex-provider prerequisites [--distribution auto|prebuilt-only|source]
+                                      Check prerequisites for a distribution mode
   codex-provider keychain-set        Store the DeepSeek API key without echo
   codex-provider keychain-status     Check Keychain presence without reading it
   codex-provider configure           Preserve ChatGPT and merge DeepSeek models
   codex-provider sync-models [--check] Add newly released models; --check only reports drift
-  codex-provider install             Configure, build, verify, and activate
+  codex-provider install [--distribution auto|prebuilt-only|source]
+                                      Configure, build/download, verify, and activate
   codex-provider status              Show configuration and runtime status
   codex-provider doctor [--live]     Validate config, routing, and optional API call
-  codex-provider update [--no-reuse] Reconcile a release for the bundled Codex
+  codex-provider update [--distribution MODE] [--no-reuse]
+                                      Reconcile a release for the bundled Codex
   codex-provider cleanup             Keep current + one rollback release; clear build caches
   codex-provider verify              Run local config and protocol checks
   codex-provider appserver-smoke [model] Test the Remote/app-server DeepSeek tool path
@@ -55,12 +58,25 @@ Environment:
   CODEX_PROVIDER_RUNTIME_ROOT        Override installed state directory
   CODEX_OFFICIAL_CLI_PATH            Override ChatGPT.app bundled Codex path
   COEXIST_CODEX_HOME                 Override Codex configuration directory
+  CODEX_PROVIDER_CARGO_CACHE_MAX_GB  Bound the local Cargo target cache (default 24)
 EOF
 }
 
 prerequisites() {
+    distribution="auto"
+    if [ "$#" -gt 0 ]; then
+        if [ "$#" -ne 2 ] || [ "$1" != "--distribution" ]; then
+            printf 'Usage: codex-provider prerequisites [--distribution auto|prebuilt-only|source]\n' >&2
+            return 2
+        fi
+        distribution="$2"
+    fi
+    case "$distribution" in
+        auto|prebuilt-only|source) ;;
+        *) printf 'Unknown distribution policy: %s\n' "$distribution" >&2; return 2 ;;
+    esac
     failed=0
-    for command_name in git cargo rustup /usr/bin/python3 jq sqlite3 rg; do
+    for command_name in git /usr/bin/python3 jq sqlite3 rg; do
         if command -v "$command_name" >/dev/null 2>&1; then
             printf 'PASS  %s\n' "$command_name"
         else
@@ -68,6 +84,24 @@ prerequisites() {
             failed=1
         fi
     done
+    if [ "$distribution" != "source" ]; then
+        if command -v gh >/dev/null 2>&1; then
+            printf 'PASS  gh\n'
+        else
+            printf 'FAIL  gh\n'
+            failed=1
+        fi
+    fi
+    if [ "$distribution" != "prebuilt-only" ]; then
+        for command_name in cargo rustup; do
+            if command -v "$command_name" >/dev/null 2>&1; then
+                printf 'PASS  %s\n' "$command_name"
+            else
+                printf 'FAIL  %s\n' "$command_name"
+                failed=1
+            fi
+        done
+    fi
     if [ -x "$official_codex" ]; then
         printf 'PASS  bundled Codex: %s\n' "$official_codex"
     else
@@ -122,7 +156,8 @@ case "${1:-help}" in
         usage
         ;;
     prerequisites)
-        prerequisites
+        shift
+        prerequisites "$@"
         ;;
     keychain-set)
         bash "$config_tool" keychain-set
@@ -137,13 +172,50 @@ case "${1:-help}" in
         bash "$config_tool" sync-models "${2:-}"
         ;;
     install)
-        prerequisites
+        shift
+        distribution=""
+        if [ "$#" -gt 0 ]; then
+            if [ "$#" -ne 2 ] || [ "$1" != "--distribution" ]; then
+                printf 'Usage: codex-provider install [--distribution auto|prebuilt-only|source]\n' >&2
+                exit 2
+            fi
+            distribution="$2"
+        fi
+        if [ -n "$distribution" ]; then
+            prerequisites --distribution "$distribution"
+        else
+            prerequisites --distribution auto
+        fi
         self_test
         bash "$config_tool" enable-both
-        manager_run install-support
-        manager_run update
-        manager_run smoke --binary "$install_root/current/codex"
-        manager_run activate-support
+        update_status=0
+        activate_status=0
+        if [ -n "$distribution" ]; then
+            if manager_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
+        else
+            if manager_run install-support; then :; else update_status=$?; fi
+        fi
+        if [ "$update_status" -eq 0 ]; then
+            if [ -n "$distribution" ]; then
+                if manager_run update --distribution "$distribution"; then :; else update_status=$?; fi
+            else
+                if manager_run update; then :; else update_status=$?; fi
+            fi
+        fi
+        if [ "$update_status" -eq 0 ]; then
+            if manager_run smoke --binary "$install_root/current/codex"; then :; else update_status=$?; fi
+        fi
+        if [ -n "$distribution" ]; then
+            if manager_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
+        else
+            if manager_run activate-support; then :; else activate_status=$?; fi
+        fi
+        if [ "$update_status" -ne 0 ]; then
+            exit "$update_status"
+        fi
+        if [ "${activate_status:-0}" -ne 0 ]; then
+            exit "$activate_status"
+        fi
         printf '\nInstalled. Fully quit and reopen ChatGPT/Codex Desktop, then run doctor --live.\n'
         ;;
     status)
@@ -154,9 +226,54 @@ case "${1:-help}" in
         doctor "${2:-}"
         ;;
     update)
-        manager_run install-support
-        manager_run update ${2:-}
-        manager_run activate-support
+        shift
+        distribution=""
+        no_reuse=0
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                --distribution)
+                    [ "$#" -ge 2 ] || { printf '%s\n' '--distribution needs auto, prebuilt-only, or source' >&2; exit 2; }
+                    distribution="$2"
+                    case "$distribution" in auto|prebuilt-only|source) ;; *) printf 'Unknown distribution policy: %s\n' "$distribution" >&2; exit 2 ;; esac
+                    shift 2
+                    ;;
+                --no-reuse)
+                    no_reuse=1
+                    shift
+                    ;;
+                *) printf 'Unknown update option: %s\n' "$1" >&2; exit 2 ;;
+            esac
+        done
+        update_status=0
+        activate_status=0
+        if [ -n "$distribution" ]; then
+            if manager_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
+        else
+            if manager_run install-support; then :; else update_status=$?; fi
+        fi
+        if [ "$update_status" -eq 0 ]; then
+            if [ "$no_reuse" -eq 1 ]; then
+                set -- "$@" --no-reuse
+            fi
+            if [ -n "$distribution" ]; then
+                set -- "$@" --distribution "$distribution"
+            fi
+            if manager_run update "$@"; then :; else update_status=$?; fi
+        fi
+        if [ "$update_status" -eq 0 ]; then
+            if manager_run smoke --binary "$install_root/current/codex"; then :; else update_status=$?; fi
+        fi
+        if [ -n "$distribution" ]; then
+            if manager_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
+        else
+            if manager_run activate-support; then :; else activate_status=$?; fi
+        fi
+        if [ "$update_status" -ne 0 ]; then
+            exit "$update_status"
+        fi
+        if [ "${activate_status:-0}" -ne 0 ]; then
+            exit "$activate_status"
+        fi
         # Desktop 升级常带来新模型；尽力顺带补齐目录，失败不影响已完成的激活。
         if ! bash "$config_tool" sync-models; then
             printf '\nModel catalog sync failed or skipped. Re-run: codex-provider sync-models\n'

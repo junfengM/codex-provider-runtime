@@ -99,10 +99,18 @@ For an authorized configuration or upgrade:
 ./bin/codex-provider cleanup
 ```
 
-The scheduled updater memoizes an unchanged failed Codex-binary/provider-patch
-combination instead of rebuilding every 15 minutes. Successful activation and
-manual `cleanup` retain the current and one rollback release while removing
-version-coupled source and Cargo build state.
+The scheduled updater memoizes unchanged source-build failures by the official
+binary and build recipe, preventing a cold compile every 15 minutes. Prebuilt
+lookup failures have a separate short retry window, so later scheduled runs can
+find a publication. Successful updates retain the current and one rollback
+release, remove source worktrees, and keep the Cargo target up to its
+configurable 24 GiB default cap; manual `cleanup` clears that cache.
+
+The default `auto` policy reuses a same-recipe local binary, then checks an
+attested prebuild, then builds from source. Use
+`codex-provider install --distribution prebuilt-only` on a Mac without
+rustup/Cargo; that policy persists for LaunchAgent updates and never compiles.
+`source` skips prebuilt downloads.
 
 Use `doctor --live` or `appserver-smoke` only when one paid ephemeral DeepSeek
 request is appropriate. The app-server smoke must observe provider `deepseek`,

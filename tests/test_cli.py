@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 import unittest
+import json
 from pathlib import Path
 
 
@@ -13,12 +15,67 @@ CLI = PROJECT_ROOT / "bin" / "codex-provider"
 class CliTests(unittest.TestCase):
     def test_update_suspends_and_refreshes_support_around_the_build(self) -> None:
         script = CLI.read_text(encoding="utf-8")
-        update_case = script.split("    update)\n", 1)[1].split("        ;;", 1)[0]
+        update_case = script.split("    update)\n", 1)[1].split("\n    cleanup)\n", 1)[0]
         install_index = update_case.index("manager_run install-support")
         update_index = update_case.index("manager_run update")
         activate_index = update_case.index("manager_run activate-support")
         self.assertLess(install_index, update_index)
         self.assertLess(update_index, activate_index)
+
+    def test_failed_update_restores_support_agents_and_preserves_distribution(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="codex-provider-cli-restore-test-") as temporary:
+            root = Path(temporary)
+            project = root / "project"
+            (project / "bin").mkdir(parents=True)
+            (project / "runtime").mkdir()
+            (project / "config").mkdir()
+            cli = project / "bin" / "codex-provider"
+            cli.write_bytes(CLI.read_bytes())
+            cli.chmod(0o755)
+            manager = project / "runtime" / "router_manager.py"
+            manager.write_text(
+                "import json, os, sys\n"
+                "args = sys.argv[1:]\n"
+                "with open(os.environ['MANAGER_CALL_LOG'], 'a', encoding='utf-8') as out:\n"
+                "    out.write(json.dumps(args) + '\\n')\n"
+                "command = next((arg for arg in args if arg in {'install-support', 'update', 'smoke', 'activate-support'}), '')\n"
+                "sys.exit(int(os.environ.get('MANAGER_UPDATE_EXIT', '0')) if command == 'update' else 0)\n",
+                encoding="utf-8",
+            )
+            coexist = project / "config" / "coexist.sh"
+            coexist.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            coexist.chmod(0o755)
+            official = root / "codex"
+            official.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            official.chmod(0o755)
+            call_log = root / "manager-calls.jsonl"
+            env = os.environ.copy()
+            env.update(
+                {
+                    "HOME": str(root / "home"),
+                    "CODEX_PROVIDER_RUNTIME_ROOT": str(root / "install"),
+                    "CODEX_OFFICIAL_CLI_PATH": str(official),
+                    "MANAGER_CALL_LOG": str(call_log),
+                    "MANAGER_UPDATE_EXIT": "2",
+                }
+            )
+            result = subprocess.run(
+                [str(cli), "update", "--distribution", "prebuilt-only"],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            calls = [json.loads(line) for line in call_log.read_text().splitlines()]
+            commands = [next(arg for arg in call if arg in {"install-support", "update", "activate-support"}) for call in calls]
+            self.assertEqual(commands, ["install-support", "update", "activate-support"])
+            for call in calls:
+                if any(arg in call for arg in ("install-support", "update", "activate-support")):
+                    self.assertIn("--distribution", call)
+                    self.assertIn("prebuilt-only", call)
+            self.assertFalse(any("smoke" in call for call in calls))
 
     def test_verify_runs_protocol_smoke_even_when_config_validation_warns(self) -> None:
         script = CLI.read_text(encoding="utf-8")
@@ -31,7 +88,7 @@ class CliTests(unittest.TestCase):
         script = CLI.read_text(encoding="utf-8")
         sync_case = script.split("    sync-models)\n", 1)[1].split("        ;;", 1)[0]
         self.assertIn('bash "$config_tool" sync-models', sync_case)
-        update_case = script.split("    update)\n", 1)[1].split("        ;;", 1)[0]
+        update_case = script.split("    update)\n", 1)[1].split("\n    cleanup)\n", 1)[0]
         self.assertIn('bash "$config_tool" sync-models', update_case)
         self.assertIn("Re-run: codex-provider sync-models", update_case)
 

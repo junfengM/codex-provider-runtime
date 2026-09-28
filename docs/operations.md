@@ -113,44 +113,68 @@ Manual reconciliation is safe and idempotent:
 Restart Desktop after a new release is activated. Verify actual rollout
 provider metadata; do not rely on the picker label.
 
-The updater rebuilds the exact Codex tag only when the bundled backend changes,
-then the stable launcher atomically adopts the matching release. DeepSeek Flash
-continues to use the official native Responses endpoint directly.
+`auto` is the default distribution policy. It first reuses a locally certified
+binary with the same recipe, then downloads an attested GitHub Release, and
+finally falls back to a local source build. Choose a persistent machine-level
+policy with `codex-provider install --distribution auto|prebuilt-only|source`
+or `codex-provider update --distribution auto|prebuilt-only|source`. The value
+is stored in `~/.codex/provider-runtime/build-policy.json` and passed to both
+LaunchAgents and launcher-triggered background updates. `prebuilt-only` never
+runs Cargo and can install on a Mac without rustup; `source` skips prebuilt
+lookups and uses the local Rust toolchain.
 
-When only the bundled client digest moved but the public source tag and patch
-asset are unchanged, the updater reuses the already certified custom binary
-instead of compiling an identical one. Reuse still re-runs the code-mode-host
-check and the full protocol smoke suite against the cached binary, records the
-new official checksum, and activates atomically. Force a source build with:
+The prebuilt archive contains only the patched Codex CLI and its manifest. Each
+Mac supplies the same-version `codex-code-mode-host` from its own ChatGPT.app.
+Clients download public Release assets without GitHub login, verify the bundle
+with `gh attestation verify --bundle`, and require this repository, signer
+workflow, and `refs/heads/main` before validating or extracting the archive.
+The manifest binds the exact upstream `rust-v<version>` peeled commit, patch and
+recipe digests, architecture, binary checksum, and macOS 13.0 minimum. A source
+or manifest mismatch fails closed.
 
-```bash
-./bin/codex-provider update --no-reuse
-```
+The main-branch workflow publishes after distribution-code changes, scans once
+every six hours, and accepts manual exact-version requests. Scheduled discovery
+selects at most one newest upstream Codex Release with both arm64 CLI and host
+assets. This follows published CLI Releases; Desktop alpha releases may differ
+and can be requested through `workflow_dispatch`. CI caches its own Cargo target
+and dependencies. Local Cargo target state is retained after successful updates
+until it exceeds 24 GiB by default; set `CODEX_PROVIDER_CARGO_CACHE_MAX_GB` to
+adjust the 1–128 GiB bound. `cleanup` clears it explicitly. The bounded cache
+reduces recompilation but does not guarantee a hit for every version.
 
-An unattended failure is memoized by the bundled Codex version and hashes of
-the official binary and provider patch. Scheduled runs skip that unchanged
-failure; a new Codex binary or provider patch automatically makes it eligible
-again, while a manual `codex-provider update` always retries. After a certified
-activation, the runtime keeps the current and one rollback release, removes all
-source worktrees, and clears Cargo build products. Run `codex-provider cleanup`
-to apply the same bounded-retention policy on demand.
+When only the bundled client digest moves but the public source tag, patch, and
+recipe are unchanged, the updater can re-certify the local binary instead of
+compiling an identical one. Reuse still re-runs the code-mode-host check and
+protocol smoke, records the new official checksum, and activates atomically.
+`--no-reuse` skips carrying a local binary across a changed official digest;
+use `--distribution source` to skip prebuilt downloads.
+
+A background source-build failure is memoized by the bundled Codex binary and
+build recipe so an unchanged failure is not recompiled every 15 minutes. The
+prebuilt lookup has a separate 10-minute retry window: missing assets, network
+errors, and local attestation/smoke failures do not block later scheduled
+checks. Manual `update` retries immediately. If an update fails, the CLI
+restores its support agents and keeps the current release; when that release
+does not match Desktop, the launcher uses the official Codex backend until a
+matching runtime is available.
 
 Source builds use one Cargo job and a memory-bounded release profile: LTO is
 disabled, code generation uses one unit, and debug/symbol data is removed. The
-result is still gated by the exact version check, route unit tests, and full
-app-server protocol smoke before activation.
+route module's dependency-free Rust unit tests, exact version, arm64 Mach-O
+metadata, and full app-server protocol smoke gate the prebuild. Local source
+tests share the release Cargo graph with the subsequent binary build.
 
 Before the offline workspace lock normalization and `--locked` build, the
-updater fetches the exact dependencies selected by the upstream lock file. This
-allows a fresh machine to acquire newly introduced registry or Git dependencies;
-the subsequent lock diff still fails closed if anything other than the expected
-workspace package version normalization changed.
+updater fetches the exact dependencies selected by the upstream lock file with
+Git CLI support enabled for nested Git dependencies. The subsequent lock diff
+still fails closed if anything other than the expected workspace package
+version normalization changed.
 
 Only the patched Codex CLI/app-server is rebuilt. The release copies the
 executable `codex-code-mode-host` bundled with the same Desktop update and
 records its checksum. The host contains no provider-routing patch, and reusing
 the signed bundled binary prevents a missing upstream Rusty V8 archive from
-blocking an otherwise compatible update.
+blocking an otherwise compatible local update.
 
 After a DeepSeek API/model announcement, compare the official Codex integration
 page and setup script with `docs/compatibility.md`, then run
