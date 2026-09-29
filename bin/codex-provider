@@ -5,8 +5,12 @@ script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 project_root="$(dirname -- "$script_dir")"
 manager="$project_root/runtime/router_manager.py"
 config_tool="$project_root/config/coexist.sh"
-# Auto-detect the bundled CLI layout (legacy Resources/codex or codex-cli).
-official_codex="$(/usr/bin/python3 "$manager" resolve-official-codex 2>/dev/null || true)"
+# Explicit CODEX_OFFICIAL_CLI_PATH wins; otherwise auto-detect the bundled CLI
+# layout (legacy Resources/codex or the Desktop codex-cli layout).
+official_codex="${CODEX_OFFICIAL_CLI_PATH:-}"
+if [ -z "$official_codex" ]; then
+    official_codex="$(/usr/bin/python3 "$manager" resolve-official-codex 2>/dev/null || true)"
+fi
 if [ -z "$official_codex" ]; then
     official_codex="/Applications/ChatGPT.app/Contents/Resources/codex"
 fi

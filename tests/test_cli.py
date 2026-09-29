@@ -105,6 +105,15 @@ class CliTests(unittest.TestCase):
         self.assertIn('bash "$config_tool" sync-models', update_case)
         self.assertIn("Re-run: codex-provider sync-models", update_case)
 
+    def test_official_codex_resolution_honors_explicit_override(self) -> None:
+        script = CLI.read_text(encoding="utf-8")
+        head = script.split("manager_run()", 1)[0]
+        self.assertIn('official_codex="${CODEX_OFFICIAL_CLI_PATH:-}"', head)
+        self.assertIn("resolve-official-codex", head)
+        override_index = head.index("official_codex=\"${CODEX_OFFICIAL_CLI_PATH:-}\"")
+        detect_index = head.index("resolve-official-codex")
+        self.assertLess(override_index, detect_index)
+
     def test_skill_install_updates_both_living_skills_with_backups(self) -> None:
         script = CLI.read_text(encoding="utf-8")
         skill_case = script.split("    skill-install)\n", 1)[1].split("        ;;", 1)[0]
