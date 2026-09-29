@@ -23,14 +23,40 @@ The reusable `codex-provider-runtime` project owns:
 - the App Server `thread/list` all-provider default required for shared Desktop
   and phone Remote history.
 
-The active install is under `~/.codex/deepseek-native-router/`. Current generic
-LaunchAgents are:
+The active install is under `~/.codex/provider-runtime/` (the stable launcher
+derives its root from its own location). Current generic LaunchAgents are:
 
 - `com.codex.provider-runtime.environment`;
 - `com.codex.provider-runtime.updater`.
 
 The old JavaScript shim and loopback DeepSeek gateway are retired. Keep their
 labels only for migration cleanup; do not reinstall them.
+
+### Bundled backend layout
+
+The bundled CLI path is not stable across Desktop updates. Older Desktop keeps
+it at `Contents/Resources/codex`; Desktop `26.924.22138` (bundled Codex
+`0.158.0-alpha.2.1`) moved it into `Contents/Resources/codex-cli`, described by
+`codex-package.json` (`layoutVersion` 1, entrypoint `bin/codex`, backend
+`codex-cli/CodexCLI.app/Contents/MacOS/codex`).
+
+Resolve the layout on every run instead of baking one path into the launcher or
+manager: explicit `CODEX_OFFICIAL_CLI_PATH`, then legacy `Resources/codex`,
+then the `codex-cli` entrypoint with the app-bundle executable as fallback.
+Keep the launcher, the manager, and the `codex-provider` CLI on that same
+resolution, and let the code-mode host and updater watch paths follow the
+detected layout.
+
+Failure signature to recognize: Desktop stops on `Organization settings could
+not be loaded` / `The app is paused until your organization settings can be
+loaded safely` (`desktop.workspacePolicyRecovery`) when the app-server startup
+policy read never completes. A launcher that points at a removed or
+non-executable backend exits `127` and produces exactly that symptom, because
+Desktop resolves the app-server from `CODEX_CLI_PATH` before its own bundled
+path. `codex-provider logs` shows `official Codex backend is missing`, and
+`codex-provider status` prints the resolved `official_binary`. This is not a
+network or organization-policy problem, and it must not be worked around by
+signing out or rewriting account state.
 
 ## Upgrade contract
 
