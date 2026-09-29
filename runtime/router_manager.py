@@ -27,7 +27,11 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 
 REPO_URL = "https://github.com/openai/codex.git"
-DEFAULT_OFFICIAL_CODEX = Path("/Applications/ChatGPT.app/Contents/Resources/codex")
+DEFAULT_APP_RESOURCES = Path("/Applications/ChatGPT.app/Contents/Resources")
+# Legacy Desktop layout: the bundled CLI is Resources/codex itself.
+DEFAULT_OFFICIAL_CODEX = DEFAULT_APP_RESOURCES / "codex"
+# Desktop 26.924 layout: Resources/codex-cli described by codex-package.json.
+DEFAULT_CODEX_CLI_LAYOUT = DEFAULT_APP_RESOURCES / "codex-cli"
 DEFAULT_INSTALL_ROOT = Path.home() / ".codex" / "provider-runtime"
 VERSION_RE = re.compile(r"^codex-cli\s+(\S+)\s*$")
 MODULE_MARKER = "mod provider_route;"
@@ -48,6 +52,75 @@ LEGACY_SUPPORT_NAMES = {
 
 class RouterError(RuntimeError):
     pass
+
+
+def codex_cli_layout_binary(layout: Path) -> Optional[Path]:
+    """Return the executable declared by a ``codex-cli`` layout directory.
+
+    Desktop 26.924 moved the bundled CLI out of ``Resources/codex`` into
+    ``Resources/codex-cli``, described by ``codex-package.json``
+    (``layoutVersion`` 1, ``entrypoint`` relative to the layout directory).
+    Both the declared entrypoint and the app-bundle executable are accepted so
+    a partial upstream layout change still resolves.
+    """
+    payload: object = {}
+    try:
+        payload = json.loads((layout / "codex-package.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {}
+    candidates: List[Path] = []
+    if isinstance(payload, dict):
+        entrypoint = payload.get("entrypoint")
+        if (
+            isinstance(entrypoint, str)
+            and entrypoint
+            and not Path(entrypoint).is_absolute()
+        ):
+            candidates.append(layout / entrypoint)
+    candidates.append(layout / "CodexCLI.app" / "Contents" / "MacOS" / "codex")
+    candidates.append(layout / "bin" / "codex")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def resolve_official_codex(
+    explicit: Optional[Path] = None, resources: Optional[Path] = None
+) -> Path:
+    """Resolve the Codex CLI bundled with the installed ChatGPT.app.
+
+    An explicit path (``--official-codex`` or ``CODEX_OFFICIAL_CLI_PATH``)
+    always wins. Otherwise the legacy ``Resources/codex`` binary is preferred
+    while it exists, and the ``codex-cli`` layout is used on newer app builds,
+    so a Desktop update cannot strand the launcher on a removed path.
+    """
+    if explicit is not None:
+        return explicit
+    assets = DEFAULT_APP_RESOURCES if resources is None else resources
+    legacy = assets / "codex"
+    if legacy.is_file():
+        return legacy
+    detected = codex_cli_layout_binary(assets / "codex-cli")
+    if detected is not None:
+        return detected
+    return legacy
+
+
+def updater_watch_paths(official_codex: Path) -> List[str]:
+    """Watch the bundled backend and, when present, its layout directory.
+
+    Desktop updates replace the binary in place or move it into the
+    ``codex-cli`` layout, so the scheduled updater must notice both.
+    """
+    paths = [os.fspath(official_codex)]
+    for directory in list(official_codex.parents) + [DEFAULT_CODEX_CLI_LAYOUT]:
+        if not (directory / "codex-package.json").is_file():
+            continue
+        if os.fspath(directory) not in paths:
+            paths.append(os.fspath(directory))
+        break
+    return paths
 
 
 def utc_now() -> str:
@@ -1183,12 +1256,20 @@ def verify_existing_release(release: Path, manifest: dict, version: str) -> None
 
 
 def bundled_code_mode_host(official_codex: Path) -> Path:
-    host = official_codex.with_name("codex-code-mode-host")
-    if not host.is_file() or not os.access(host, os.X_OK):
-        raise RouterError(
-            f"Bundled code-mode host is unavailable or not executable: {host}"
-        )
-    return host
+    # Legacy layout keeps the host next to Resources/codex; the codex-cli layout
+    # keeps it in codex-cli/bin (entrypoint) or inside CodexCLI.app (backend).
+    candidates: List[Path] = []
+    for directory in official_codex.parents:
+        candidates.append(directory / "codex-code-mode-host")
+        candidates.append(directory / "bin" / "codex-code-mode-host")
+        if directory.name == "Resources":
+            break
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    raise RouterError(
+        f"Bundled code-mode host is unavailable or not executable near {official_codex}"
+    )
 
 
 def certified_release_candidates(
@@ -1553,7 +1634,7 @@ def plist_updater(manager: Path, official_codex: Path, install_root: Path) -> di
         "EnvironmentVariables": {"PATH": ":".join(path_entries)},
         "RunAtLoad": True,
         "StartInterval": 900,
-        "WatchPaths": [os.fspath(official_codex)],
+        "WatchPaths": updater_watch_paths(official_codex),
         "ProcessType": "Background",
         "LowPriorityIO": True,
         "Nice": 10,
@@ -1816,11 +1897,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--official-codex",
         type=Path,
-        default=DEFAULT_OFFICIAL_CODEX,
-        help=f"bundled backend (default: {DEFAULT_OFFICIAL_CODEX})",
+        default=None,
+        help=(
+            "bundled backend (default: auto-detect legacy "
+            f"{DEFAULT_OFFICIAL_CODEX} or the codex-cli layout)"
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
+    subparsers.add_parser("resolve-official-codex")
     update = subparsers.add_parser("update")
     update.add_argument("--non-interactive", action="store_true")
     update.add_argument(
@@ -1854,7 +1939,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     project_root = Path(__file__).resolve().parent
     patch_asset = project_root / "patches" / "provider_route.rs"
+    args.official_codex = resolve_official_codex(args.official_codex)
     try:
+        if args.command == "resolve-official-codex":
+            print(os.fspath(args.official_codex))
+            return 0
         if args.command == "status":
             return status(args.install_root, args.official_codex)
         if args.command == "cleanup":

@@ -102,6 +102,21 @@ Use `doctor --live` only when one ephemeral paid API request is appropriate.
 
 ## Desktop upgrade
 
+The bundled backend path is detected on every run. Desktop `26.924.22138` moved
+the CLI from `Contents/Resources/codex` into `Contents/Resources/codex-cli`
+(`codex-package.json`, `layoutVersion` 1, entrypoint `bin/codex`). The launcher
+and the manager prefer `Resources/codex` while it exists and otherwise use the
+`codex-cli` entrypoint, falling back to
+`codex-cli/CodexCLI.app/Contents/MacOS/codex`. Set `CODEX_OFFICIAL_CLI_PATH`
+to pin an explicit bundled binary instead of relying on detection.
+
+When the launcher points at a removed or non-executable backend, Desktop cannot
+complete its startup app-server policy read and stops on
+`Organization settings could not be loaded` / `The app is paused until your
+organization settings can be loaded safely`. `codex-provider logs` shows
+`official Codex backend is missing` in that case; `codex-provider status`
+prints the resolved `official_binary`.
+
 The updater watches the bundled Codex binary and also runs every 15 minutes.
 Manual reconciliation is safe and idempotent:
 

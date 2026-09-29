@@ -33,6 +33,11 @@
   released official models (for example the GPT-6 family) in one command on any
   machine, with an offline `--check` drift report, a lock, and automatic
   `config.toml` rollback on failure or interrupt.
+- [x] Resolve both bundled Codex layouts (legacy `Resources/codex` and the
+  Desktop `26.924` `Resources/codex-cli` layout) in the launcher, manager, and
+  `codex-provider` CLI, with code-mode-host and updater watch-path coverage, so
+  a Desktop update cannot strand `CODEX_CLI_PATH` on a removed path and stop
+  Desktop on its `Organization settings could not be loaded` startup screen.
 
 ## Completed validation
 

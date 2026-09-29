@@ -3,7 +3,30 @@ set -eu
 
 launcher_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 router_root="${CODEX_PROVIDER_RUNTIME_ROOT:-$(dirname -- "$launcher_dir")}"
-official_codex="${CODEX_OFFICIAL_CLI_PATH:-/Applications/ChatGPT.app/Contents/Resources/codex}"
+app_resources="${CODEX_APP_RESOURCES:-/Applications/ChatGPT.app/Contents/Resources}"
+
+# Desktop 26.924 moved the bundled CLI from Resources/codex into the codex-cli
+# layout. Resolve both so an app update cannot strand the launcher on a removed
+# path (which left Desktop stuck on its organization-settings startup screen).
+resolve_official_codex() {
+    if [ -n "${CODEX_OFFICIAL_CLI_PATH:-}" ]; then
+        printf '%s\n' "$CODEX_OFFICIAL_CLI_PATH"
+        return
+    fi
+    for candidate in \
+        "$app_resources/codex" \
+        "$app_resources/codex-cli/bin/codex" \
+        "$app_resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+    do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    printf '%s\n' "$app_resources/codex"
+}
+
+official_codex="$(resolve_official_codex)"
 current_dir="$router_root/current"
 custom_codex="$current_dir/codex"
 manifest="$current_dir/manifest.json"
