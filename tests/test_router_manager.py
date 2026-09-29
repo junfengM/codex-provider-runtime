@@ -382,6 +382,95 @@ class SupportMetadataTests(unittest.TestCase):
             self.assertNotIn("rustup", result.stdout)
 
 
+class OfficialCodexLayoutTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="router-manager-layout-test-")
+        self.resources = Path(self.temporary.name) / "Resources"
+        self.resources.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def write(self, path: Path, body: str = "#!/bin/sh\necho codex-cli 0.158.0-alpha.2.1\n") -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        path.chmod(0o755)
+        return path
+
+    def write_layout(self, package: dict, entrypoint: Path) -> Path:
+        layout = self.resources / "codex-cli"
+        self.write(entrypoint)
+        (layout / "codex-package.json").write_text(
+            json.dumps(package), encoding="utf-8"
+        )
+        return layout
+
+    def test_prefers_legacy_binary_when_present(self) -> None:
+        legacy = self.write(self.resources / "codex")
+        self.write_layout(
+            {"layoutVersion": 1, "entrypoint": "bin/codex"},
+            self.resources / "codex-cli" / "bin" / "codex",
+        )
+        self.assertEqual(
+            router_manager.resolve_official_codex(None, self.resources), legacy
+        )
+
+    def test_resolves_codex_cli_layout_entrypoint(self) -> None:
+        self.write_layout(
+            {"layoutVersion": 1, "entrypoint": "bin/codex"},
+            self.resources / "codex-cli" / "bin" / "codex",
+        )
+        self.assertEqual(
+            router_manager.resolve_official_codex(None, self.resources),
+            self.resources / "codex-cli" / "bin" / "codex",
+        )
+
+    def test_resolves_codex_cli_layout_without_package_json(self) -> None:
+        app_binary = self.write(
+            self.resources / "codex-cli" / "CodexCLI.app" / "Contents" / "MacOS" / "codex"
+        )
+        self.assertEqual(
+            router_manager.resolve_official_codex(None, self.resources), app_binary
+        )
+
+    def test_missing_bundled_cli_reports_legacy_path(self) -> None:
+        self.assertEqual(
+            router_manager.resolve_official_codex(None, self.resources),
+            self.resources / "codex",
+        )
+
+    def test_explicit_override_wins_over_detection(self) -> None:
+        explicit = self.resources / "elsewhere" / "codex"
+        self.write(self.resources / "codex")
+        self.assertEqual(
+            router_manager.resolve_official_codex(explicit, self.resources), explicit
+        )
+
+    def test_code_mode_host_resolves_inside_codex_cli_layout(self) -> None:
+        entrypoint = self.write(
+            self.resources / "codex-cli" / "bin" / "codex"
+        )
+        host = self.write(self.resources / "codex-cli" / "bin" / "codex-code-mode-host", "#!/bin/sh\nexit 0\n")
+        self.assertEqual(router_manager.bundled_code_mode_host(entrypoint), host)
+
+    def test_code_mode_host_resolves_beside_app_bundle_backend(self) -> None:
+        backend = self.write(
+            self.resources / "codex-cli" / "CodexCLI.app" / "Contents" / "MacOS" / "codex"
+        )
+        host = self.write(self.resources / "codex-cli" / "bin" / "codex-code-mode-host", "#!/bin/sh\nexit 0\n")
+        self.assertEqual(router_manager.bundled_code_mode_host(backend), host)
+
+    def test_updater_watch_paths_include_codex_cli_layout(self) -> None:
+        entrypoint = self.write(self.resources / "codex-cli" / "bin" / "codex")
+        (self.resources / "codex-cli" / "codex-package.json").write_text(
+            json.dumps({"layoutVersion": 1, "entrypoint": "bin/codex"}),
+            encoding="utf-8",
+        )
+        paths = router_manager.updater_watch_paths(entrypoint)
+        self.assertIn(os.fspath(entrypoint), paths)
+        self.assertIn(os.fspath(self.resources / "codex-cli"), paths)
+
+
 class ReleaseReuseTests(unittest.TestCase):
     COMMIT = "3d2ee51ca2d5db578f328aa75e20aa22c0197c9a"
     OTHER_COMMIT = "a30ec314bbd0e3721632234d07db7c99855db3b9"

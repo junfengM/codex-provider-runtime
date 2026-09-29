@@ -27,6 +27,17 @@ Desktop or a new phone Remote thread.
 
 ## Current client/runtime validation
 
+On 2026-09-29 Desktop `26.924.22138` replaced the bundled CLI `0.155.0-alpha.16.4`
+with `0.158.0-alpha.2.1` and moved it into the new `Resources/codex-cli` layout
+(`layoutVersion` 1, entrypoint `bin/codex`, backend
+`codex-cli/CodexCLI.app/Contents/MacOS/codex`). The fail-closed launcher kept
+running the removed legacy path, exited `127`, and Desktop stopped on its
+`Organization settings could not be loaded` startup screen because the
+app-server policy read never completed. Runtime and launcher now resolve both
+layouts, so Desktop starts on the official backend while the custom release
+waits for a version-matched rebuild, and DeepSeek routing is restored by the
+normal version-gated activation.
+
 On 2026-09-10 DeepSeek released V4.1 Flash (`deepseek-flash`) and retired
 V4-Flash; `deepseek-v4-flash` is still accepted and served by V4.1 Flash. On
 2026-09-11 the catalog was reduced to `deepseek-flash` alone (V4 Pro removed,
