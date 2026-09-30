@@ -64,27 +64,34 @@ codex-auto-review → deepseek-flash（low effort）
 
 ## 快速开始
 
-默认 `auto` 模式需要 macOS、`/Applications/ChatGPT.app`、Git、GitHub CLI、rustup/Cargo、
-`jq`、`sqlite3`、ripgrep，以及可访问官方 `openai/codex` 仓库。它先复用本机同 recipe 的
-已认证 release，再尝试 GitHub 预编译，最后才从源码构建。没有 Rust 工具链的新 Mac 可选
-`prebuilt-only`，此模式只下载、验证和运行，不会调用 Cargo。
+默认 `prebuilt-only`：安装只下载、验签并运行 CI 发布的 macOS arm64 产物，**不调用 Cargo**，
+因此 Desktop 升级不会触发动辄两小时的本地源码构建。需要 macOS 13+、`/Applications/ChatGPT.app`、
+Git、GitHub CLI（`gh`）、`jq`、`sqlite3`、ripgrep，以及可访问本仓库的 Release。
 
 ```bash
 git clone https://github.com/junfengM/codex-provider-runtime.git
 cd codex-provider-runtime
 
-./bin/codex-provider prerequisites --distribution prebuilt-only # 无 rustup/Cargo 的设备
+./bin/codex-provider prerequisites # 默认按 prebuilt-only 检查，不需要 rustup/Cargo
 ./bin/codex-provider keychain-set
-./bin/codex-provider install --distribution prebuilt-only
+./bin/codex-provider install
 ```
 
-本机如果已安装 rustup/Cargo 并希望在预编译暂不可用时回退源码构建，使用默认 `auto`：
-`./bin/codex-provider prerequisites && ./bin/codex-provider install`。
+CI 没有对应版本的产物时（比如 Desktop 刚升级、而 Release 还没编）：Desktop 会继续用官方
+后端，不会自动编译。可以给该版本补编一次预编译产物：
+
+```bash
+gh workflow run prebuilt-codex.yml -f version=<Desktop 内置 Codex 版本>
+```
+
+本机装了 rustup/Cargo 并希望预编译缺失时回退源码构建，用 `auto`：
+`./bin/codex-provider install --distribution auto`。
 
 `install`/`update --distribution auto|prebuilt-only|source` 会把选择保存到本机
 `~/.codex/provider-runtime/build-policy.json`；LaunchAgent 和启动器后台更新也遵守这个策略。
-`auto` 是默认值；`prebuilt-only` 永不源码编译；`source` 跳过预编译并使用本机 Rust 工具链。
-再次传入 `--distribution` 即可切换。
+仓库默认值（未指定且本机没有保存过策略时）是 `prebuilt-only`：永不源码编译；`auto` 先复用
+本机同 recipe 的 release，再下载预编译，最后才源码构建；`source` 跳过预编译并使用本机 Rust
+工具链。再次传入 `--distribution` 即可切换。
 
 `keychain-set` 必须在你能看到的 macOS Terminal 中执行：它会隐藏输入，并把 API Key
 保存到 macOS Keychain，不会写进仓库、配置文件、日志或聊天记录。不要把 API Key
