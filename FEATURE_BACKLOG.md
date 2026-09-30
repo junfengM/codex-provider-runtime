@@ -38,6 +38,10 @@
   `codex-provider` CLI, with code-mode-host and updater watch-path coverage, so
   a Desktop update cannot strand `CODEX_CLI_PATH` on a removed path and stop
   Desktop on its `Organization settings could not be loaded` startup screen.
+- [x] Make attested prebuilt adoption the repository default
+  (`prebuilt-only`) for `install`, `prerequisites`, and flag-less `update`,
+  while keeping a machine's saved `build-policy.json` authoritative, so other
+  machines never start a multi-hour local Cargo build.
 
 ## Completed validation
 

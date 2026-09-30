@@ -128,15 +128,22 @@ Manual reconciliation is safe and idempotent:
 Restart Desktop after a new release is activated. Verify actual rollout
 provider metadata; do not rely on the picker label.
 
-`auto` is the default distribution policy. It first reuses a locally certified
-binary with the same recipe, then downloads an attested GitHub Release, and
-finally falls back to a local source build. Choose a persistent machine-level
-policy with `codex-provider install --distribution auto|prebuilt-only|source`
-or `codex-provider update --distribution auto|prebuilt-only|source`. The value
-is stored in `~/.codex/provider-runtime/build-policy.json` and passed to both
-LaunchAgents and launcher-triggered background updates. `prebuilt-only` never
-runs Cargo and can install on a Mac without rustup; `source` skips prebuilt
-lookups and uses the local Rust toolchain.
+`prebuilt-only` is the repository default distribution policy (used when a
+machine has never chosen one). Installation downloads, attestation-verifies,
+and runs the macOS arm64 artifact published by this repository's CI; it never
+runs Cargo, so a Desktop upgrade cannot start a multi-hour local build. If CI
+has no artifact for the newly bundled Codex version yet, the launcher keeps
+using the official backend until it is published; request that exact version
+with `gh workflow run prebuilt-codex.yml -f version=<Codex version>`.
+
+Choose a persistent machine-level policy with
+`codex-provider install --distribution auto|prebuilt-only|source` or
+`codex-provider update --distribution auto|prebuilt-only|source`. The value is
+stored in `~/.codex/provider-runtime/build-policy.json` and passed to both
+LaunchAgents and launcher-triggered background updates. `auto` first reuses a
+locally certified binary with the same recipe, then downloads an attested
+GitHub Release, and finally falls back to a local source build; `source` skips
+prebuilt lookups and uses the local Rust toolchain.
 
 The prebuilt archive contains only the patched Codex CLI and its manifest. Each
 Mac supplies the same-version `codex-code-mode-host` from its own ChatGPT.app.

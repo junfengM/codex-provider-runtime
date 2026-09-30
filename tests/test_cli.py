@@ -114,6 +114,22 @@ class CliTests(unittest.TestCase):
         detect_index = head.index("resolve-official-codex")
         self.assertLess(override_index, detect_index)
 
+    def test_repository_default_distribution_is_prebuilt_only(self) -> None:
+        script = CLI.read_text(encoding="utf-8")
+        self.assertIn('default_distribution="prebuilt-only"', script)
+        prerequisites = script.split("prerequisites()", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('distribution="$default_distribution"', prerequisites)
+        install_case = script.split("    install)\n", 1)[1].split("\n    status)\n", 1)[0]
+        self.assertIn('distribution="$default_distribution"', install_case)
+        update_case = script.split("    update)\n", 1)[1].split("\n    cleanup)\n", 1)[0]
+        self.assertIn('distribution="$(saved_distribution)"', update_case)
+        self.assertIn('distribution="$default_distribution"', update_case)
+
+    def test_saved_machine_policy_is_read_from_build_policy(self) -> None:
+        script = CLI.read_text(encoding="utf-8")
+        helper = script.split("saved_distribution()", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("build-policy.json", helper)
+
     def test_skill_install_updates_both_living_skills_with_backups(self) -> None:
         script = CLI.read_text(encoding="utf-8")
         skill_case = script.split("    skill-install)\n", 1)[1].split("        ;;", 1)[0]

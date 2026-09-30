@@ -95,9 +95,11 @@ lets scheduled checks retry after a failed update.
 
 The machine-level `build-policy.json` stores `auto`, `prebuilt-only`, or
 `source`; both the updater LaunchAgent and launcher-triggered retries inherit
-that setting. `auto` prefers a same-recipe local binary, then a GitHub Release
-whose archive attestation is verified against this repository's main workflow,
-then a source build. `prebuilt-only` never invokes Cargo. A prebuilt archive
+that setting, and a machine that never chose one follows the repository default
+`prebuilt-only`. `auto` prefers a same-recipe local binary, then a GitHub
+Release whose archive attestation is verified against this repository's main
+workflow, then a source build. `prebuilt-only` never invokes Cargo. A prebuilt
+archive
 contains only `codex` and its manifest; each Mac keeps its local official host.
 The manifest binds the upstream peeled tag commit, patch and recipe digests,
 binary checksum, arm64 target, and the macOS 13.0 floor.

@@ -5,6 +5,10 @@ script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 project_root="$(dirname -- "$script_dir")"
 manager="$project_root/runtime/router_manager.py"
 config_tool="$project_root/config/coexist.sh"
+# Repository default: every machine adopts the attested macOS arm64 build that
+# GitHub Actions publishes, so a Desktop upgrade never triggers a multi-hour
+# local Cargo build. Override per run with --distribution auto|source.
+default_distribution="prebuilt-only"
 # Explicit CODEX_OFFICIAL_CLI_PATH wins; otherwise auto-detect the bundled CLI
 # layout (legacy Resources/codex or the Desktop codex-cli layout).
 official_codex="${CODEX_OFFICIAL_CLI_PATH:-}"
@@ -52,11 +56,14 @@ Usage:
   codex-provider configure           Preserve ChatGPT and merge DeepSeek models
   codex-provider sync-models [--check] Add newly released models; --check only reports drift
   codex-provider install [--distribution auto|prebuilt-only|source]
-                                      Configure, build/download, verify, and activate
+                                      Configure, fetch/verify, and activate
+                                      (default: prebuilt-only, the CI artifact)
   codex-provider status              Show configuration and runtime status
   codex-provider doctor [--live]     Validate config, routing, and optional API call
   codex-provider update [--distribution MODE] [--no-reuse]
                                       Reconcile a release for the bundled Codex
+                                      (default: this machine's saved policy or
+                                      prebuilt-only)
   codex-provider cleanup             Keep current + one rollback release; clear build caches
   codex-provider verify              Run local config and protocol checks
   codex-provider appserver-smoke [model] Test the Remote/app-server DeepSeek tool path
@@ -78,8 +85,16 @@ Environment:
 EOF
 }
 
+saved_distribution() {
+    policy="$install_root/build-policy.json"
+    [ -r "$policy" ] || return 0
+    /usr/bin/python3 -c 'import json, sys
+value = json.load(open(sys.argv[1], encoding="utf-8")).get("distribution")
+print(value if isinstance(value, str) else "")' "$policy" 2>/dev/null || true
+}
+
 prerequisites() {
-    distribution="auto"
+    distribution="$default_distribution"
     if [ "$#" -gt 0 ]; then
         if [ "$#" -ne 2 ] || [ "$1" != "--distribution" ]; then
             printf 'Usage: codex-provider prerequisites [--distribution auto|prebuilt-only|source]\n' >&2
@@ -197,35 +212,20 @@ case "${1:-help}" in
             fi
             distribution="$2"
         fi
-        if [ -n "$distribution" ]; then
-            prerequisites --distribution "$distribution"
-        else
-            prerequisites --distribution auto
-        fi
+        [ -n "$distribution" ] || distribution="$default_distribution"
+        prerequisites --distribution "$distribution"
         self_test
         bash "$config_tool" enable-both
         update_status=0
         activate_status=0
-        if [ -n "$distribution" ]; then
-            if manager_support_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
-        else
-            if manager_support_run install-support; then :; else update_status=$?; fi
-        fi
+        if manager_support_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
         if [ "$update_status" -eq 0 ]; then
-            if [ -n "$distribution" ]; then
-                if manager_run update --distribution "$distribution"; then :; else update_status=$?; fi
-            else
-                if manager_run update; then :; else update_status=$?; fi
-            fi
+            if manager_run update --distribution "$distribution"; then :; else update_status=$?; fi
         fi
         if [ "$update_status" -eq 0 ]; then
             if manager_run smoke --binary "$install_root/current/codex"; then :; else update_status=$?; fi
         fi
-        if [ -n "$distribution" ]; then
-            if manager_support_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
-        else
-            if manager_support_run activate-support; then :; else activate_status=$?; fi
-        fi
+        if manager_support_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
         if [ "$update_status" -ne 0 ]; then
             exit "$update_status"
         fi
@@ -260,30 +260,26 @@ case "${1:-help}" in
                 *) printf 'Unknown update option: %s\n' "$1" >&2; exit 2 ;;
             esac
         done
+        # An explicit flag wins; otherwise keep this machine's saved policy and
+        # fall back to the repository default on a machine that never chose one.
+        if [ -z "$distribution" ]; then
+            distribution="$(saved_distribution)"
+            [ -n "$distribution" ] || distribution="$default_distribution"
+        fi
         update_status=0
         activate_status=0
-        if [ -n "$distribution" ]; then
-            if manager_support_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
-        else
-            if manager_support_run install-support; then :; else update_status=$?; fi
-        fi
+        if manager_support_run install-support --distribution "$distribution"; then :; else update_status=$?; fi
         if [ "$update_status" -eq 0 ]; then
             if [ "$no_reuse" -eq 1 ]; then
                 set -- "$@" --no-reuse
             fi
-            if [ -n "$distribution" ]; then
-                set -- "$@" --distribution "$distribution"
-            fi
+            set -- "$@" --distribution "$distribution"
             if manager_run update "$@"; then :; else update_status=$?; fi
         fi
         if [ "$update_status" -eq 0 ]; then
             if manager_run smoke --binary "$install_root/current/codex"; then :; else update_status=$?; fi
         fi
-        if [ -n "$distribution" ]; then
-            if manager_support_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
-        else
-            if manager_support_run activate-support; then :; else activate_status=$?; fi
-        fi
+        if manager_support_run activate-support --distribution "$distribution"; then :; else activate_status=$?; fi
         if [ "$update_status" -ne 0 ]; then
             exit "$update_status"
         fi
