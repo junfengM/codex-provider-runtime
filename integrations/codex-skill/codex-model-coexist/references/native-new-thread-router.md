@@ -137,3 +137,10 @@ Use `codex-provider disable`, restart Desktop, and retain releases and evidence.
 Keep API keys in Keychain or an environment-backed secret. Never place them in
 the project, logs, manifests, prompts, or rollout diagnostics. Never rewrite
 stored thread provider metadata.
+
+On 2026-10-22, source inspection of Codex `0.163.0-alpha.11` and
+`0.164.0-alpha.11` confirmed an added `persisted_settings.as_ref()` resume
+argument. Patch v8 accepts that exact signature alongside the older signature,
+normalizing the provider after metadata merge and before config loading.
+Unknown or ambiguous signatures still fail closed. Source patch validation
+does not imply a completed binary build or live Desktop acceptance.

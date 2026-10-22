@@ -137,6 +137,32 @@ class PatchSourceTests(unittest.TestCase):
             patched.index("let clear_reasoning_effort"),
         )
 
+    def test_resume_with_persisted_settings_normalizes_after_metadata(self) -> None:
+        source = self.root / "source"
+        thread = source / "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        upstream = THREAD_WITH_PREPARED_RESUME.replace(
+            "                &thread_history,\n",
+            "                &thread_history,\n                persisted_settings.as_ref(),\n",
+        )
+        thread.write_text(upstream, encoding="utf-8")
+        self.assertEqual(router_manager.patch_source(source, self.patch_asset), "patched")
+        patched = thread.read_text()
+        self.assertLess(patched.index("persisted_settings.as_ref()"),
+                        patched.index(router_manager.RESUME_CALL_MARKER))
+        self.assertLess(patched.index(router_manager.RESUME_CALL_MARKER),
+                        patched.index("let clear_reasoning_effort"))
+        self.assertEqual(router_manager.patch_source(source, self.patch_asset), "already-patched")
+
+    def test_unknown_resume_signature_does_not_write_partial_patch(self) -> None:
+        source = self.root / "source"
+        thread = source / "codex-rs/app-server/src/request_processors/thread_processor.rs"
+        upstream = THREAD.replace("&thread_history,", "&unknown_history,")
+        thread.write_text(upstream)
+        with self.assertRaises(router_manager.RouterError):
+            router_manager.patch_source(source, self.patch_asset)
+        self.assertEqual(thread.read_text(), upstream)
+        self.assertEqual((source / "codex-rs/app-server/src/request_processors.rs").read_text(), PARENT)
+
     def test_upgrades_the_legacy_new_thread_only_patch(self) -> None:
         source = self.root / "source"
         parent = source / "codex-rs/app-server/src/request_processors.rs"

@@ -51,7 +51,7 @@ RESUME_CALL_MARKER = "model_provider_for_resume("
 ENVIRONMENT_LABEL = "com.codex.provider-runtime.environment"
 UPDATER_LABEL = "com.codex.provider-runtime.updater"
 RETIRED_GATEWAY_LABEL = "com.codex.provider-runtime.deepseek-gateway"
-PATCH_NAME = "deepseek-flash-pro-route-resume-and-all-provider-history-v7"
+PATCH_NAME = "deepseek-flash-pro-route-resume-and-all-provider-history-v8"
 DEFAULT_CARGO_TARGET_MAX_GB = 24
 PREBUILT_RETRY_SECONDS = 10 * 60
 RELEASE_DISTRIBUTIONS = {"auto", "prebuilt-only", "source"}
@@ -500,16 +500,24 @@ def patch_source(source_root: Path, patch_asset: Path) -> str:
                 &mut typesafe_overrides,
             )
             .await;"""
-    resume_replacement = resume_anchor + """
+    # Upstream 0.163 adds persisted permission settings before config overrides.
+    # Accept only known signatures; never guess where to normalize a provider.
+    resume_with_settings = resume_anchor.replace(
+        "                &thread_history,\n",
+        "                &thread_history,\n                persisted_settings.as_ref(),\n",
+    )
+    resume_normalization = """
         typesafe_overrides.model_provider = model_provider_for_resume(
             typesafe_overrides.model.as_deref(),
             typesafe_overrides.model_provider.clone(),
         );"""
     if RESUME_CALL_MARKER not in thread_text:
-        thread_text = replace_once(
+        thread_text = replace_one_of(
             thread_text,
-            resume_anchor,
-            resume_replacement,
+            tuple(
+                (anchor, anchor + resume_normalization)
+                for anchor in (resume_anchor, resume_with_settings)
+            ),
             description="resumed-thread provider normalization",
         )
 

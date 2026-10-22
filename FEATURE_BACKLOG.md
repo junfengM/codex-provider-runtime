@@ -48,3 +48,6 @@
 - [x] Run an explicit live DeepSeek API tool-call smoke after user approval.
 - [x] Validate the public app-server path with a structured command execution
   and hidden SHA-256 challenge.
+
+- [x] Accept the persisted-settings resume metadata signature in Codex 0.163/0.164; preserve exact-anchor rejection and add regression tests (2026-10-22).
+- [ ] Publish and activate a certified 0.163.0-alpha.11 prebuild; verify live DeepSeek after Desktop restart.

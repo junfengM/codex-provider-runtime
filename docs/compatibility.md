@@ -90,3 +90,10 @@ Available reasoning efforts; no runtime patch or app rebuild is required.
 - https://api-docs.deepseek.com/guides/responses_api/
 - https://api-docs.deepseek.com/updates/
 - https://developers.openai.com/codex/app-server/
+
+On 2026-10-22, source inspection of Codex `0.163.0-alpha.11` and
+`0.164.0-alpha.11` confirmed an added `persisted_settings.as_ref()` resume
+argument. Patch v8 accepts that exact signature alongside the older signature,
+normalizing the provider after metadata merge and before config loading.
+Unknown or ambiguous signatures still fail closed. Source patch validation
+does not imply a completed binary build or live Desktop acceptance.
