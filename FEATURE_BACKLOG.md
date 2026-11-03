@@ -51,3 +51,5 @@
 
 - [x] Accept the persisted-settings resume metadata signature in Codex 0.163/0.164; preserve exact-anchor rejection and add regression tests (2026-10-22).
 - [ ] Publish and activate a certified 0.163.0-alpha.11 prebuild; verify live DeepSeek after Desktop restart.
+
+- [x] 2026-11-03：预编译失败冷却、失败后缓存和工作流超时；见 `dev-sync/2026-11-03-ci.md`。

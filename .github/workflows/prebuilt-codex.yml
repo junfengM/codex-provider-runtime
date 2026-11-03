@@ -9,6 +9,7 @@ on:
       - ".github/workflows/prebuilt-codex.yml"
       - "runtime/**"
       - "scripts/prebuilt_ci.py"
+      - "scripts/prebuilt_retry.py"
       - "tests/**"
   workflow_dispatch:
     inputs:
@@ -23,12 +24,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: prebuilt-codex-${{ github.ref }}
-  cancel-in-progress: false
+  group: prebuilt-codex-${{ github.event_name == 'pull_request' && github.ref || 'release-main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   tests:
     runs-on: macos-15
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -47,10 +49,11 @@ jobs:
     runs-on: macos-15
     permissions:
       contents: read
+    timeout-minutes: 240
     outputs:
       version: ${{ steps.plan.outputs.version }}
       release_tag: ${{ steps.plan.outputs.release_tag }}
-      build_required: ${{ steps.plan.outputs.build_required }}
+      build_required: ${{ steps.plan.outputs.build_required == 'true' && steps.retry.outputs.allowed == 'true' }}
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -70,29 +73,46 @@ jobs:
           PREBUILT_VERSION: ${{ steps.plan.outputs.version }}
         run: python3 scripts/prebuilt_ci.py cache-metadata
 
-      - name: Install exact upstream Rust toolchain
+      # Main-only cache: exact upstream version and runtime source identity.
+      # A source change or manual dispatch can retry immediately.
+      - name: Restore recent prebuild failure
         if: steps.plan.outputs.build_required == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/prebuilt-retry
+          key: prebuilt-failure-${{ steps.plan.outputs.version }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            prebuilt-failure-${{ steps.plan.outputs.version }}-${{ github.sha }}-
+
+      - name: Bound repeated scheduled failures
+        id: retry
+        if: steps.plan.outputs.build_required == 'true'
+        run: python3 scripts/prebuilt_retry.py check --marker "$RUNNER_TEMP/prebuilt-retry/failure.json"
+
+      - name: Install exact upstream Rust toolchain
+        if: steps.plan.outputs.build_required == 'true' && steps.retry.outputs.allowed == 'true'
         env:
           PREBUILT_TOOLCHAIN: ${{ steps.cache_identity.outputs.toolchain }}
         run: rustup toolchain install "$PREBUILT_TOOLCHAIN" --profile minimal --no-self-update
 
       - name: Restore bounded Cargo cache
         id: cargo_cache
-        if: steps.plan.outputs.build_required == 'true'
+        if: steps.plan.outputs.build_required == 'true' && steps.retry.outputs.allowed == 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             ${{ runner.temp }}/prebuilt-runtime/cache/cargo-target
-          key: ${{ runner.os }}-macos15-arm64-rust-${{ steps.cache_identity.outputs.toolchain }}-${{ steps.cache_identity.outputs.target }}-lock-${{ steps.cache_identity.outputs.lock_sha256 }}-recipe-${{ steps.cache_identity.outputs.recipe_sha256 }}
+          key: ${{ runner.os }}-macos15-arm64-rust-${{ steps.cache_identity.outputs.toolchain }}-${{ steps.cache_identity.outputs.target }}-lock-${{ steps.cache_identity.outputs.lock_sha256 }}-recipe-${{ steps.cache_identity.outputs.recipe_sha256 }}-run-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ${{ runner.os }}-macos15-arm64-rust-${{ steps.cache_identity.outputs.toolchain }}-${{ steps.cache_identity.outputs.target }}-lock-${{ steps.cache_identity.outputs.lock_sha256 }}-recipe-${{ steps.cache_identity.outputs.recipe_sha256 }}
             ${{ runner.os }}-macos15-arm64-rust-${{ steps.cache_identity.outputs.toolchain }}-${{ steps.cache_identity.outputs.target }}-lock-${{ steps.cache_identity.outputs.lock_sha256 }}-
             ${{ runner.os }}-macos15-arm64-rust-${{ steps.cache_identity.outputs.toolchain }}-${{ steps.cache_identity.outputs.target }}-
 
       - name: Check restored cache size
         id: restored_cache_size
-        if: steps.plan.outputs.build_required == 'true'
+        if: steps.plan.outputs.build_required == 'true' && steps.retry.outputs.allowed == 'true'
         run: >-
           python3 scripts/prebuilt_ci.py guard-cache
           --path "$HOME/.cargo/registry"
@@ -100,11 +120,12 @@ jobs:
           --path "$RUNNER_TEMP/prebuilt-runtime/cache/cargo-target"
 
       - name: Drop an oversized restored Rust target cache
-        if: steps.plan.outputs.build_required == 'true' && steps.restored_cache_size.outputs.within_limit != 'true'
+        if: steps.plan.outputs.build_required == 'true' && steps.retry.outputs.allowed == 'true' && steps.restored_cache_size.outputs.within_limit != 'true'
         run: rm -rf "$RUNNER_TEMP/prebuilt-runtime/cache/cargo-target"
 
       - name: Build and package the patched Codex CLI
-        if: steps.plan.outputs.build_required == 'true'
+        id: compile
+        if: steps.plan.outputs.build_required == 'true' && steps.retry.outputs.allowed == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PREBUILT_VERSION: ${{ steps.plan.outputs.version }}
@@ -118,7 +139,7 @@ jobs:
 
       - name: Measure cache before saving
         id: final_cache_size
-        if: steps.plan.outputs.build_required == 'true'
+        if: ${{ !cancelled() && (steps.compile.outcome == 'success' || steps.compile.outcome == 'failure') }}
         run: >-
           python3 scripts/prebuilt_ci.py guard-cache
           --path "$HOME/.cargo/registry"
@@ -126,17 +147,28 @@ jobs:
           --path "$RUNNER_TEMP/prebuilt-runtime/cache/cargo-target"
 
       - name: Save bounded Cargo cache
-        if: steps.plan.outputs.build_required == 'true' && steps.cargo_cache.outputs.cache-hit != 'true' && steps.final_cache_size.outputs.within_limit == 'true'
+        if: ${{ !cancelled() && steps.final_cache_size.outputs.within_limit == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             ${{ runner.temp }}/prebuilt-runtime/cache/cargo-target
-          key: ${{ runner.os }}-macos15-arm64-rust-${{ steps.cache_identity.outputs.toolchain }}-${{ steps.cache_identity.outputs.target }}-lock-${{ steps.cache_identity.outputs.lock_sha256 }}-recipe-${{ steps.cache_identity.outputs.recipe_sha256 }}
+          key: ${{ runner.os }}-macos15-arm64-rust-${{ steps.cache_identity.outputs.toolchain }}-${{ steps.cache_identity.outputs.target }}-lock-${{ steps.cache_identity.outputs.lock_sha256 }}-recipe-${{ steps.cache_identity.outputs.recipe_sha256 }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Record failed build for scheduled retry cooldown
+        if: ${{ !cancelled() && steps.compile.outcome == 'failure' }}
+        run: python3 scripts/prebuilt_retry.py record --marker "$RUNNER_TEMP/prebuilt-retry/failure.json"
+
+      - name: Save failed-build cooldown
+        if: ${{ !cancelled() && steps.compile.outcome == 'failure' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/prebuilt-retry
+          key: prebuilt-failure-${{ steps.plan.outputs.version }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload release candidate for main-only attestation
-        if: steps.plan.outputs.build_required == 'true'
+        if: steps.plan.outputs.build_required == 'true' && steps.retry.outputs.allowed == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: prebuilt-codex-${{ steps.plan.outputs.version }}
@@ -147,6 +179,7 @@ jobs:
           retention-days: 1
 
   publish:
+    timeout-minutes: 15
     needs: [tests, build]
     if: needs.build.outputs.build_required == 'true' && github.repository == 'junfengM/codex-provider-runtime' && github.ref == 'refs/heads/main'
     runs-on: macos-15
